@@ -49,9 +49,22 @@ router.get('/export/all', async (_req, res) => {
     for (const e of game.events) {
       ws.addRow([e.id, e.type, e.scorer?.name || '', e.scorer?.gender || '', e.against?.name || '', e.against?.gender || '', e.minute, e.half, e.metadata]);
       if (e.type === 'goal') {
-        const metaKey = (e.metadata === null || e.metadata === undefined) ? '' : String(e.metadata);
-        stats.goalsByType[metaKey] = (stats.goalsByType[metaKey] || 0) + 1;
-        if (e.against) stats.goalsAgainstByType[metaKey] = (stats.goalsAgainstByType[metaKey] || 0) + 1;
+        // normalize metadata: prefer JSON { goalType: '...' } -> use goalType, otherwise use raw string
+        let goalType = '';
+        if (e.metadata != null) {
+          try {
+            const parsed = JSON.parse(String(e.metadata));
+            if (parsed && typeof parsed === 'object' && parsed.goalType) {
+              goalType = String(parsed.goalType);
+            } else {
+              goalType = String(e.metadata);
+            }
+          } catch (_err) {
+            goalType = String(e.metadata);
+          }
+        }
+        stats.goalsByType[goalType] = (stats.goalsByType[goalType] || 0) + 1;
+        if (e.against) stats.goalsAgainstByType[goalType] = (stats.goalsAgainstByType[goalType] || 0) + 1;
         if (e.scorer?.gender) stats.goalsByGender[e.scorer.gender] = (stats.goalsByGender[e.scorer.gender] || 0) + 1;
       }
     }

@@ -24,6 +24,11 @@ Given('multiple games exist with logged events', async function () {
   const g1 = games.find(g=>g.opponent==='Team B');
   const g2 = games.find(g=>g.opponent==='Team C');
 
+  // record aliases so later steps that reference id 1/2 map to the created ids
+  this._gameAlias = this._gameAlias || {};
+  if (g1) this._gameAlias[1] = g1.id;
+  if (g2) this._gameAlias[2] = g2.id;
+
   // log a few events for game 1 and game 2
   // Jonas scores schot at minute 12 first
   await this.api.post(`/api/games/${g1.id}/events`, { type: 'goal', scorerId: pJonas.id, minute: 12, half: 'first', metadata: JSON.stringify({ goalType: 'schot' }) });
@@ -37,7 +42,8 @@ Given('multiple games exist with logged events', async function () {
 });
 
 When('I export game id {int} to Excel', async function (id) {
-  const res = await this.api.get(`/api/export/game/${id}`, { responseType: 'arraybuffer' });
+  const realId = (this._gameAlias && this._gameAlias[id]) ? this._gameAlias[id] : id;
+  const res = await this.api.get(`/api/export/game/${realId}`, { responseType: 'arraybuffer' });
   this.lastExportBuffer = Buffer.from(res.data);
 });
 
@@ -94,23 +100,27 @@ Then('the exported workbook should contain one sheet per game and an overall she
 Given('the following event data across games:', async function (dataTable) {
   // create players referenced in table and create games if missing
   const rows = dataTable.hashes();
+  // clear existing games to make this scenario deterministic
+  await this.api.delete('/api/games').catch(()=>{});
   // ensure games referenced exist
-  let games = (await this.api.get('/api/games')).data;
-  const ensureGame = async (id) => {
-    let g = games.find(x => x.id === Number(id));
-    if (!g) {
-      await this.api.post('/api/games', { opponent: `Game ${id}`, date: '2025-10-01', home: true });
-      games = (await this.api.get('/api/games')).data;
-    }
-  };
+  // create one game per unique requested game id and map requested -> actual id
+  const requestedIds = Array.from(new Set(rows.map(r => Number(r.game))));
+  // create players referenced
   for (const r of rows) {
     await ensurePlayer(this.api, r.scorer, 'male');
     await ensurePlayer(this.api, r.against || 'Unknown', 'male').catch(()=>{});
-    await ensureGame(r.game);
   }
-  games = (await this.api.get('/api/games')).data;
+  const gamesMap = {};
+  for (const reqId of requestedIds) {
+    await this.api.post('/api/games', { opponent: `Game ${reqId}`, date: '2025-10-01', home: true }).catch(()=>{});
+  }
+  let games = (await this.api.get('/api/games')).data;
+  for (const reqId of requestedIds) {
+    const g = games.find(x => x.opponent === `Game ${reqId}`);
+    if (g) gamesMap[reqId] = g.id;
+  }
   for (const r of rows) {
-    const game = games.find(g=>g.id===Number(r.game));
+    const game = games.find(g=>g.id===gamesMap[Number(r.game)]);
     // parse time cell like 'minute:12 half:first'
     const timeParts = r.time.split(' ');
     let minute = 0, half = 'first';
@@ -122,9 +132,10 @@ Given('the following event data across games:', async function (dataTable) {
     const scorer = players.find(p=>p.name===r.scorer);
     const against = players.find(p=>p.name===r.against);
     const payload = { type: 'goal', minute, half, metadata: JSON.stringify({ goalType: r.type }) };
-    if (scorer) payload.scorerId = scorer.id;
-    if (against) payload.againstId = against.id;
-    await this.api.post(`/api/games/${game.id}/events`, payload);
+  if (scorer) payload.scorerId = scorer.id;
+  if (against) payload.againstId = against.id;
+  const realId = (this._gameAlias && this._gameAlias[game.id]) ? this._gameAlias[game.id] : game.id;
+  await this.api.post(`/api/games/${realId}/events`, payload);
   }
 });
 

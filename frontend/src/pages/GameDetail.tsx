@@ -20,8 +20,10 @@ export default function GameDetail() {
 
   useEffect(() => {
     if (!id) return;
+    const gameId = Number(id);
+    if (Number.isNaN(gameId)) return;
     setLoading(true);
-    Promise.all([fetchGame(id), fetchPlayers()])
+    Promise.all([fetchGame(gameId), fetchPlayers()])
       .then(([g, p]) => { setGame(g); setPlayers(p); })
       .catch(() => showToast('Failed to load game'))
       .finally(() => setLoading(false));
@@ -79,7 +81,7 @@ export default function GameDetail() {
             try {
               setLoading(true);
               await createEvent(game.id, { type: 'goal', goalType, scorerId, minute, half });
-              const updated = await fetchGame(id!);
+              const updated = await fetchGame(Number(id!));
               setGame(updated);
               showToast('Goal logged');
             } catch (e) {
@@ -113,7 +115,7 @@ export default function GameDetail() {
             try {
               setLoading(true);
               await createEvent(game.id, { type: 'substitution', inPlayerId, outPlayerId, minute, half });
-              const updated = await fetchGame(id!);
+              const updated = await fetchGame(Number(id!));
               setGame(updated);
               showToast('Substitution recorded');
             } catch (e) { showToast('Could not create substitution'); }

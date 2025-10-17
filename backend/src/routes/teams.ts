@@ -4,11 +4,15 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 const router = Router();
 
-// Create a team
+// Create a team (idempotent)
 router.post('/', async (req, res) => {
   const { name } = req.body;
   try {
-    const t = await prisma.team.create({ data: { name } });
+    const t = await prisma.team.upsert({
+      where: { name },
+      update: {},
+      create: { name }
+    });
     res.json(t);
   } catch (err) {
     console.error(err);

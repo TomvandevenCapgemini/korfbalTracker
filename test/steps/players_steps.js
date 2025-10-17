@@ -39,7 +39,8 @@ When('I add players Jonas, Esmee and Floor to {string}', async function (teamNam
 When('I assign {string} to game id {int}', async function (teamName, gameId) {
   const teams = (await this.api.get('/api/teams')).data;
   const team = teams.find(t=>t.name===teamName) || this.latestTeam;
-  await this.api.post(`/api/games/${gameId}/team`, { teamId: team.id });
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  await this.api.post(`/api/games/${realId}/team`, { teamId: team.id });
 });
 
 Then('game id {int} should have team {string} with members Jonas, Esmee, Floor', async function (gameId, teamName) {

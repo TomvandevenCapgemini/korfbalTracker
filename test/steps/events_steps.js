@@ -8,8 +8,9 @@ When('in minute {string} of the {string} half player {string} scores a goal of t
     // find player id
     const players = (await this.api.get('/api/players')).data;
     const p = players.find(x=>x.name===playerName);
-    const payload = { type: 'goal', scorerId: p.id, minute: Number(minute), half, metadata: JSON.stringify({ goalType: type }) };
-    await this.api.post(`/api/games/${gameId}/events`, payload);
+  const payload = { type: 'goal', scorerId: p.id, minute: Number(minute), half, metadata: JSON.stringify({ goalType: type }) };
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  await this.api.post(`/api/games/${realId}/events`, payload);
   }
 );
 
@@ -19,8 +20,9 @@ When('player {string} scores a goal of type {string} in game id {int}',
     await this.api.post('/api/players', { name: playerName, gender: 'male' }).catch(()=>{});
     const players = (await this.api.get('/api/players')).data;
     const p = players.find(x=>x.name===playerName);
-    const payload = { type: 'goal', scorerId: p.id, metadata: JSON.stringify({ goalType: type }) };
-    await this.api.post(`/api/games/${gameId}/events`, payload);
+  const payload = { type: 'goal', scorerId: p.id, metadata: JSON.stringify({ goalType: type }) };
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  await this.api.post(`/api/games/${realId}/events`, payload);
   }
 );
 
@@ -31,8 +33,9 @@ When('in minute {string} of the {string} half player {string} concedes a goal of
     await this.api.post('/api/players', { name: againstPlayer, gender: 'male' }).catch(()=>{});
     const players = (await this.api.get('/api/players')).data;
     const against = players.find(x=>x.name===againstPlayer);
-    const payload = { type: 'goal', againstId: against.id, minute: Number(minute), half, metadata: JSON.stringify({ goalType: type }) };
-    await this.api.post(`/api/games/${gameId}/events`, payload);
+  const payload = { type: 'goal', againstId: against.id, minute: Number(minute), half, metadata: JSON.stringify({ goalType: type }) };
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  await this.api.post(`/api/games/${realId}/events`, payload);
   }
 );
 
@@ -44,8 +47,9 @@ When('in minute {string} of the {string} half substitute {string} enters replaci
     const players = (await this.api.get('/api/players')).data;
     const inP = players.find(x=>x.name===subIn);
     const outP = players.find(x=>x.name===subOut);
-    const payload = { type: 'substitution', inPlayerId: inP.id, outPlayerId: outP.id, minute: Number(minute), half };
-    await this.api.post(`/api/games/${gameId}/events`, payload).then(()=>{}).catch(()=>{});
+  const payload = { type: 'substitution', inPlayerId: inP.id, outPlayerId: outP.id, minute: Number(minute), half };
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  await this.api.post(`/api/games/${realId}/events`, payload).then(()=>{}).catch(()=>{});
   }
 );
 
@@ -55,12 +59,14 @@ When('I log a goal event in minute {string} of the {string} half in game id {int
   const players = (await this.api.get('/api/players')).data;
   const p = players.find(x=>x.name==='Auto');
   const payload = { type: 'goal', scorerId: p.id, minute: Number(minute), half, metadata: JSON.stringify({ goalType: 'auto' }) };
-  await this.api.post(`/api/games/${gameId}/events`, payload);
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  await this.api.post(`/api/games/${realId}/events`, payload);
 });
 
 Then('the game id {int} should contain an event: scorer {string}, type {string}, minute {int}, half {string}',
   async function (gameId, scorerName, type, minute, half) {
-    const res = await this.api.get(`/api/games/${gameId}`);
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  const res = await this.api.get(`/api/games/${realId}`);
     // try to match event by minute/half if provided, otherwise match by scorer and type
     let ev = res.data.events.find(e=>e.minute===minute && e.half===half);
     if (!ev) ev = res.data.events.find(e=>e.type==='goal' && e.scorerId && e.metadata && e.metadata.includes(type));
@@ -75,7 +81,8 @@ Then('the game id {int} should contain an event: scorer {string}, type {string},
 
 Then('the game id {int} should contain an event: against {string}, type {string}, minute {int}, half {string}',
   async function (gameId, againstName, type, minute, half) {
-    const res = await this.api.get(`/api/games/${gameId}`);
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  const res = await this.api.get(`/api/games/${realId}`);
     const ev = res.data.events.find(e=>e.minute===minute && e.half===half && e.againstId);
     assert(ev, 'event not found');
     const players = (await this.api.get('/api/players')).data;
@@ -86,7 +93,8 @@ Then('the game id {int} should contain an event: against {string}, type {string}
 
 Then('game id {int} should contain substitution event: in {string}, out {string}, minute {int}, half {string}',
   async function (gameId, inName, outName, minute, half) {
-    const res = await this.api.get(`/api/games/${gameId}`);
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  const res = await this.api.get(`/api/games/${realId}`);
     const ev = res.data.events.find(e=>e.type==='substitution' && e.minute===minute && e.half===half) || res.data.events.find(e=>e.type==='substitution' && e.metadata && e.metadata.includes(inName));
     assert(ev, 'substitution not found');
     const players = (await this.api.get('/api/players')).data;
@@ -113,7 +121,8 @@ Then('the substitution should be rejected if substitute and substituted player a
 });
 
 Then('querying the database for game id {int} should return that event with minute {int} and half {string}', async function (gameId, minute, half) {
-  const res = await this.api.get(`/api/games/${gameId}`);
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  const res = await this.api.get(`/api/games/${realId}`);
   const ev = res.data.events.find(e=>e.minute===minute && e.half===half);
   assert(ev, 'event not found');
 });
