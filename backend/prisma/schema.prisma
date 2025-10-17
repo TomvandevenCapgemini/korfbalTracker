@@ -15,3 +15,49 @@ model Match {
   homeScore Int
   awayScore Int
 }
+
+model Player {
+  id     Int    @id @default(autoincrement())
+  name   String @unique
+  gender String
+  teams  TeamMembership[]
+  eventsScored Event[] @relation("EventScorer")
+  eventsAgainst Event[] @relation("EventAgainst")
+}
+
+model Team {
+  id      Int    @id @default(autoincrement())
+  name    String @unique
+  members TeamMembership[]
+}
+
+model TeamMembership {
+  id      Int    @id @default(autoincrement())
+  team    Team   @relation(fields: [teamId], references: [id])
+  teamId  Int
+  player  Player @relation(fields: [playerId], references: [id])
+  playerId Int
+}
+
+model Game {
+  id        Int    @id @default(autoincrement())
+  opponent  String
+  date      String
+  home      Boolean
+  events    Event[]
+}
+
+model Event {
+  id        Int    @id @default(autoincrement())
+  game      Game   @relation(fields: [gameId], references: [id])
+  gameId    Int
+  type      String
+  scorerId  Int?
+  scorer    Player? @relation("EventScorer", fields: [scorerId], references: [id])
+  againstId Int?
+  against   Player? @relation("EventAgainst", fields: [againstId], references: [id])
+  minute    Int
+  half      String
+  metadata  String?
+}
+

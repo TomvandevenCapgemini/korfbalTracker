@@ -1,14 +1,17 @@
 import { Router } from 'express';
+import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
 const router = Router();
 
-const sample = [
-  { id: 1, date: '2025-10-01', homeTeam: 'Team A', awayTeam: 'Team B', homeScore: 12, awayScore: 10 },
-  { id: 2, date: '2025-10-08', homeTeam: 'Team C', awayTeam: 'Team D', homeScore: 8, awayScore: 9 }
-];
-
-router.get('/', (_req, res) => {
-  res.json(sample);
+router.get('/', async (_req, res) => {
+  try {
+    const matches = await prisma.match.findMany({ orderBy: { id: 'asc' } });
+    res.json(matches);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch matches' });
+  }
 });
 
 export default router;
