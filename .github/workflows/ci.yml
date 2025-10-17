@@ -1,24 +1,35 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  backend:
+  build-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
-      - name: Backend install
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies (root)
+        run: npm ci
+      - name: Install package dependencies
         run: |
-          npm --prefix backend install
-          npm --prefix backend run lint || true
-          npm --prefix backend run test || true
-
-  frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Frontend install
+          npm --prefix ${{ matrix.package }} install
+      - name: Run lint (if present)
         run: |
-          npm --prefix frontend install
-          npm --prefix frontend run lint || true
-          npm --prefix frontend run test || true
+          npm --prefix ${{ matrix.package }} run lint || true
+      - name: Run tests / build
+        run: |
+          if [ "${{ matrix.package }}" = "backend" ]; then
+            npm --prefix backend run test --if-present || exit 1
+          else
+            npm --prefix frontend run build --if-present || exit 1
+          fi
