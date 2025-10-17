@@ -42,6 +42,36 @@ export async function exportAllExcel() {
   return r.data;
 }
 
+export async function fetchTeams() {
+  const r = await api.get('/teams');
+  return r.data;
+}
+
+export async function createTeam(payload) {
+  const r = await api.post('/teams', payload);
+  return r.data;
+}
+
+export async function addTeamMember(teamId, payload) {
+  const r = await api.post(`/teams/${teamId}/members`, payload);
+  return r.data;
+}
+
+export async function removeTeamMember(teamId, playerId) {
+  const r = await api.delete(`/teams/${teamId}/members/${playerId}`);
+  return r.data;
+}
+
+export async function copyTeamMembers(teamId, fromTeamId) {
+  const r = await api.post(`/teams/${teamId}/copy-members`, { fromTeamId });
+  return r.data;
+}
+
+export async function assignTeamToGame(gameId, teamId) {
+  const r = await api.post(`/games/${gameId}/team`, { teamId });
+  return r.data;
+}
+
 export async function fetchOverallStats() {
   // using the same aggregation logic as backend (simple endpoint could be added)
   const r = await api.get('/export/all');

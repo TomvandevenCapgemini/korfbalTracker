@@ -5,13 +5,26 @@ const prisma = new PrismaClient();
 const router = Router();
 
 router.post('/', async (req, res) => {
-  const { opponent, date, home } = req.body;
+  const { opponent, date, home, teamId } = req.body;
   try {
-    const g = await prisma.game.create({ data: { opponent, date, home: !!home } });
+    const g = await prisma.game.create({ data: { opponent, date, home: !!home, teamId: teamId ? Number(teamId) : undefined } });
     res.json(g);
   } catch (err) {
     console.error(err);
     res.status(400).json({ error: 'Could not create game' });
+  }
+});
+
+// Assign or change team for a game
+router.post('/:id/team', async (req, res) => {
+  const id = Number(req.params.id);
+  const { teamId } = req.body;
+  try {
+    const g = await prisma.game.update({ where: { id }, data: { teamId: teamId ? Number(teamId) : null } });
+    res.json(g);
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Could not assign team' });
   }
 });
 
