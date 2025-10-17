@@ -7,7 +7,14 @@ const router = Router();
 router.post('/', async (req, res) => {
   const { name, gender } = req.body;
   try {
-    const p = await prisma.player.create({ data: { name, gender } });
+    // Create player if not exists (idempotent)
+    let p = await prisma.player.findUnique({ where: { name } });
+    if (!p) {
+      p = await prisma.player.create({ data: { name, gender } });
+    } else if (gender && p.gender !== gender) {
+      // update gender if caller provides a (possibly corrected) value
+      p = await prisma.player.update({ where: { name }, data: { gender } });
+    }
     res.json(p);
   } catch (err) {
     console.error(err);

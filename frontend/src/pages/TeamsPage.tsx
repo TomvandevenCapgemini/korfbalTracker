@@ -1,45 +1,57 @@
 import React, { useEffect, useState } from 'react';
 import { fetchTeams, createTeam, fetchPlayers, addTeamMember, removeTeamMember, copyTeamMembers, fetchGames, assignTeamToGame } from '../api';
+import { useUI } from '../contexts/UIContext';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function TeamsPage(){
-  const [teams, setTeams] = useState([]);
-  const [players, setPlayers] = useState([]);
-  const [games, setGames] = useState([]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [games, setGames] = useState<any[]>([]);
   const [newTeamName, setNewTeamName] = useState('');
-  const [selectedTeam, setSelectedTeam] = useState(null);
-  const [selectedGame, setSelectedGame] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState<any|null>(null);
+  const [selectedGame, setSelectedGame] = useState<number|null>(null);
+
+  const { loading, setLoading, showToast } = useUI();
 
   async function load(){
-    setTeams(await fetchTeams());
-    setPlayers(await fetchPlayers());
-    setGames(await (await fetch('/api/games')).json());
+    try {
+      setLoading(true);
+      const [t,p] = await Promise.all([fetchTeams(), fetchPlayers()]);
+      const g = await (await fetch('/api/games')).json();
+      setTeams(t); setPlayers(p); setGames(g);
+    } catch (e) { showToast('Failed to load teams'); }
+    finally { setLoading(false); }
   }
 
   useEffect(()=>{ load(); }, []);
 
   async function handleCreate(){
-    if(!newTeamName) return;
-    await createTeam({ name: newTeamName });
-    setNewTeamName('');
-    load();
+    if(!newTeamName) return showToast('Enter a team name');
+    try {
+      setLoading(true);
+      await createTeam({ name: newTeamName });
+      setNewTeamName('');
+      await load();
+    } catch (e) { showToast('Could not create team'); }
+    finally { setLoading(false); }
   }
 
-  async function handleAddMember(teamId, playerId){
+  async function handleAddMember(teamId: any, playerId: any){
     await addTeamMember(teamId, { playerId });
     load();
   }
 
-  async function handleRemoveMember(teamId, playerId){
+  async function handleRemoveMember(teamId: any, playerId: any){
     await removeTeamMember(teamId, playerId);
     load();
   }
 
-  async function handleCopy(teamId, fromTeamId){
+  async function handleCopy(teamId: any, fromTeamId: any){
     await copyTeamMembers(teamId, fromTeamId);
     load();
   }
 
-  async function handleAssignTeam(gameId, teamId){
+  async function handleAssignTeam(gameId: any, teamId: any){
     await assignTeamToGame(gameId, teamId);
     load();
   }
@@ -50,8 +62,10 @@ export default function TeamsPage(){
 
       <div className="my-4">
         <input className="border p-1" value={newTeamName} onChange={e=>setNewTeamName(e.target.value)} placeholder="New team name" />
-        <button className="ml-2 btn" onClick={handleCreate}>Create</button>
+        <button className="ml-2 btn" onClick={handleCreate} disabled={loading}>Create</button>
       </div>
+
+      {loading && <div className="mb-4"><LoadingSpinner /></div>}
 
       <div className="grid grid-cols-2 gap-4">
         <div>

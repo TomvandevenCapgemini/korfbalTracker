@@ -13,4 +13,11 @@
     "e2e:install": "npm --prefix backend install && npm --prefix frontend install",
     "e2e": "cucumber-js --require ./test/steps --require ./test/support --publish-quiet"
   }
+  ,
+  "devDependencies": {
+    "@cucumber/cucumber": "^9.0.0",
+    "playwright": "^1.37.0",
+    "axios": "^1.4.0",
+    "exceljs": "^4.4.0"
+  }
 }

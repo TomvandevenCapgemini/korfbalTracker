@@ -34,11 +34,11 @@ router.get('/export/all', async (_req, res) => {
   const games = await prisma.game.findMany({ include: { events: { include: { scorer: true, against: true } } } });
   const wb = new ExcelJS.Workbook();
 
-  const stats = {
+  const stats: { goalsByType: Record<string, number>, goalsAgainstByType: Record<string, number>, goalsByGender: Record<string, number> } = {
     goalsByType: {},
     goalsAgainstByType: {},
     goalsByGender: { male: 0, female: 0 },
-  } as any;
+  };
 
   for (const game of games) {
     const ws = wb.addWorksheet(`game-${game.id}`);
@@ -49,8 +49,9 @@ router.get('/export/all', async (_req, res) => {
     for (const e of game.events) {
       ws.addRow([e.id, e.type, e.scorer?.name || '', e.scorer?.gender || '', e.against?.name || '', e.against?.gender || '', e.minute, e.half, e.metadata]);
       if (e.type === 'goal') {
-        stats.goalsByType[e.metadata] = (stats.goalsByType[e.metadata] || 0) + 1;
-        if (e.against) stats.goalsAgainstByType[e.metadata] = (stats.goalsAgainstByType[e.metadata] || 0) + 1;
+        const metaKey = (e.metadata === null || e.metadata === undefined) ? '' : String(e.metadata);
+        stats.goalsByType[metaKey] = (stats.goalsByType[metaKey] || 0) + 1;
+        if (e.against) stats.goalsAgainstByType[metaKey] = (stats.goalsAgainstByType[metaKey] || 0) + 1;
         if (e.scorer?.gender) stats.goalsByGender[e.scorer.gender] = (stats.goalsByGender[e.scorer.gender] || 0) + 1;
       }
     }

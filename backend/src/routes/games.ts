@@ -28,6 +28,19 @@ router.post('/:id/team', async (req, res) => {
   }
 });
 
+// Update game metadata (opponent, date, home)
+router.put('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const { opponent, date, home } = req.body;
+  try {
+    const g = await prisma.game.update({ where: { id }, data: { opponent: opponent ?? undefined, date: date ?? undefined, home: home === undefined ? undefined : !!home } });
+    res.json(g);
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Could not update game' });
+  }
+});
+
 router.get('/', async (_req, res) => {
   const games = await prisma.game.findMany({ orderBy: { date: 'desc' } });
   res.json(games);

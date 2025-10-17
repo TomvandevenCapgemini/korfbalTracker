@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchGame } from '../api';
 import { fetchPlayers, createEvent } from '../api';
+import { useUI } from '../contexts/UIContext';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function GameDetail() {
   const { id } = useParams();
@@ -14,13 +16,18 @@ export default function GameDetail() {
   const [inPlayerId, setInPlayerId] = useState<number | null>(null);
   const [outPlayerId, setOutPlayerId] = useState<number | null>(null);
 
+  const { loading, setLoading, showToast } = useUI();
+
   useEffect(() => {
     if (!id) return;
-    fetchGame(id).then(setGame).catch(console.error);
-    fetchPlayers().then(setPlayers).catch(console.error);
+    setLoading(true);
+    Promise.all([fetchGame(id), fetchPlayers()])
+      .then(([g, p]) => { setGame(g); setPlayers(p); })
+      .catch(() => showToast('Failed to load game'))
+      .finally(() => setLoading(false));
   }, [id]);
 
-  if (!game) return <div>Loading...</div>;
+  if (!game) return <div className="py-8"><LoadingSpinner /></div>;
 
   return (
     <div className="space-y-4">
@@ -30,9 +37,21 @@ export default function GameDetail() {
       <section>
         <h3 className="font-semibold">Events</h3>
         <ul className="space-y-2">
-          {(game.events || []).map((e) => (
-            <li key={e.id} className="bg-white p-2 rounded">{e.type} – minute {e.minute} ({e.half})</li>
-          ))}
+          {(game.events || []).map((e: any) => {
+            const scorer = players.find((p:any)=>p.id===e.scorerId);
+            const against = players.find((p:any)=>p.id===e.againstId);
+            if (e.type === 'goal') {
+              const meta = (()=>{ try { return JSON.parse(e.metadata || '{}'); } catch (err) { return {}; } })();
+              const how = meta.goalType || 'other';
+              return <li key={e.id} className="bg-white p-2 rounded">Goal: {scorer ? scorer.name : 'Unknown'} — {how} {against ? `(against ${against.name})` : ''} — minute {e.minute} ({e.half})</li>;
+            }
+            if (e.type === 'substitution') {
+              const inP = players.find((p:any)=>p.id===e.scorerId);
+              const outP = players.find((p:any)=>p.id===e.againstId);
+              return <li key={e.id} className="bg-white p-2 rounded">Substitution: {inP ? inP.name : 'Unknown'} in, {outP ? outP.name : 'Unknown'} out — minute {e.minute} ({e.half})</li>;
+            }
+            return <li key={e.id} className="bg-white p-2 rounded">{e.type} – minute {e.minute} ({e.half})</li>;
+          })}
         </ul>
       </section>
 
@@ -48,7 +67,7 @@ export default function GameDetail() {
             <option value="doorloopbal">doorloopbal</option>
             <option value="vrije worp">vrije worp</option>
             <option value="strafworp">strafworp</option>
-            <option value="vrij invoerveld">vrij invoerveld</option>
+            <option value="other">other</option>
           </select>
           <input type="number" value={minute} onChange={(e)=>setMinute(Number(e.target.value))} className="w-20" />
           <select value={half} onChange={(e)=>setHalf(e.target.value as any)}>
@@ -56,10 +75,16 @@ export default function GameDetail() {
             <option value="second">second</option>
           </select>
           <button className="bg-blue-600 text-white px-3" onClick={async ()=>{
-            if (!scorerId) return alert('select scorer');
-            await createEvent(game.id, { type: 'goal', goalType, scorerId, minute, half });
-            const updated = await fetchGame(id!);
-            setGame(updated);
+            if (!scorerId) return showToast('Select a scorer');
+            try {
+              setLoading(true);
+              await createEvent(game.id, { type: 'goal', goalType, scorerId, minute, half });
+              const updated = await fetchGame(id!);
+              setGame(updated);
+              showToast('Goal logged');
+            } catch (e) {
+              showToast('Could not log goal');
+            } finally { setLoading(false); }
           }}>Log goal</button>
         </div>
       </section>
@@ -81,14 +106,18 @@ export default function GameDetail() {
             <option value="second">second</option>
           </select>
           <button className="bg-blue-600 text-white px-3" onClick={async ()=>{
-            if (!inPlayerId || !outPlayerId) return alert('select both players');
-            // client-side gender check
+            if (!inPlayerId || !outPlayerId) return showToast('Select both players');
             const inP = players.find(p=>p.id===Number(inPlayerId));
             const outP = players.find(p=>p.id===Number(outPlayerId));
-            if (inP.gender !== outP.gender) return alert('Substitution genders must match');
-            await createEvent(game.id, { type: 'substitution', inPlayerId, outPlayerId, minute, half });
-            const updated = await fetchGame(id!);
-            setGame(updated);
+            if (inP.gender !== outP.gender) return showToast('Substitution genders must match');
+            try {
+              setLoading(true);
+              await createEvent(game.id, { type: 'substitution', inPlayerId, outPlayerId, minute, half });
+              const updated = await fetchGame(id!);
+              setGame(updated);
+              showToast('Substitution recorded');
+            } catch (e) { showToast('Could not create substitution'); }
+            finally { setLoading(false); }
           }}>Make substitution</button>
         </div>
       </section>

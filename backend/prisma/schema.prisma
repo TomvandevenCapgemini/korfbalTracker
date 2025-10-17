@@ -45,6 +45,8 @@ model Game {
   opponent String
   date     String
   home     Boolean
+  scoreFor Int     @default(0)
+  scoreAgainst Int @default(0)
   events   Event[]
   teamId   Int?
   team     Team?   @relation(fields: [teamId], references: [id])
