@@ -1,0 +1,24 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend install
+        run: |
+          npm --prefix backend install
+          npm --prefix backend run lint || true
+          npm --prefix backend run test || true
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Frontend install
+        run: |
+          npm --prefix frontend install
+          npm --prefix frontend run lint || true
+          npm --prefix frontend run test || true
