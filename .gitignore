@@ -7,3 +7,4 @@ backend/node_modules/
 dev.db
 /.idea
 /.vscode
+frontend/src/tailwind.css  # Generated CSS file
