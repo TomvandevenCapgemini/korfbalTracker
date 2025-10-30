@@ -23,36 +23,18 @@ npm --prefix frontend run dev
 Notes on cloning and authentication
 ----------------------------------
 
-We recommend cloning this repository over SSH when working locally so you can push/pull using your SSH key without repeatedly entering credentials.
+We recommend cloning this repository over HTTPS by default. HTTPS works well with CI and is the simplest option for most contributors. Detailed authentication options (SSH and Personal Access Tokens) are available in the project's documentation and CONTRIBUTING guide.
 
-Clone using SSH:
-
-```bash
-git clone git@github.com:TomvandevenCapgemini/korfbalTracker.git
-```
-
-If you already cloned via HTTPS and want to switch the origin to SSH:
+Clone using HTTPS:
 
 ```bash
-git remote set-url origin git@github.com:TomvandevenCapgemini/korfbalTracker.git
+git clone https://github.com/TomvandevenCapgemini/korfbalTracker.git
 ```
 
-If you prefer HTTPS or need to use a Personal Access Token (PAT) for CI or automation, keep the remote as HTTPS. To set the HTTPS remote explicitly:
+If you already cloned via SSH and want to switch the origin to HTTPS:
 
 ```bash
 git remote set-url origin https://github.com/TomvandevenCapgemini/korfbalTracker.git
 ```
 
-SSH setup quick steps (macOS):
-
-```bash
-# generate a new key if you don't have one
-ssh-keygen -t ed25519 -C "you@example.com"
-# ensure the key is loaded into the agent / keychain
-eval "$(ssh-agent -s)"
-ssh-add --apple-use-keychain ~/.ssh/id_ed25519
-# copy pubkey to clipboard and add it to GitHub > Settings > SSH and GPG keys
-pbcopy < ~/.ssh/id_ed25519.pub
-```
-
-If you want docs or CI to continue recommending HTTPS instead, tell me and I will revert this guidance.
+For more details on authentication (SSH setup, PAT usage for CI, and macOS keychain tips) see `CONTRIBUTING.md` and `docs/authentication.md`.
