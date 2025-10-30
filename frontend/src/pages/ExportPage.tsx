@@ -1,12 +1,34 @@
 import React, { useEffect, useState } from 'react';
+
+interface TeamStats {
+  homeWins: number;
+  awayWins: number;
+  homeLosses: number;
+  awayLosses: number;
+}
+
+interface Statistics {
+  type_of_goals_scored_the_most: string;
+  type_of_goals_scored_against_the_most: string;
+  most_goals_against_males_or_female_players: string;
+  home_advantage: Record<string, TeamStats>;
+}
 import { exportGameExcel, exportAllExcel, fetchOverallStats } from '../api';
 
 export default function ExportPage(){
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<Statistics | null>(null);
 
-  useEffect(()=>{
-    // fetch overall export (it returns workbook currently) - we'll call the endpoint for stats via HEAD or expand backend if needed
-  },[]);
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const data = await fetchOverallStats();
+        setStats(data);
+      } catch (err) {
+        console.error('Failed to fetch stats:', err);
+      }
+    }
+    fetchStats();
+  }, []);
 
   async function downloadGame(id:number){
     const data = await exportGameExcel(id);
@@ -43,7 +65,38 @@ export default function ExportPage(){
 
       <div className="mt-6">
         <h3 className="font-semibold">Overall statistics</h3>
-        <pre>{stats?JSON.stringify(stats,null,2):'Statistics will be available in the exported workbook'}</pre>
+        {stats ? (
+          <div className="mt-4 space-y-4">
+            <div>
+              <h4 className="font-medium">Most common goals</h4>
+              <p>Most scored type: {stats.type_of_goals_scored_the_most || 'N/A'}</p>
+              <p>Most scored against type: {stats.type_of_goals_scored_against_the_most || 'N/A'}</p>
+            </div>
+            
+            <div>
+              <h4 className="font-medium">Goals by gender</h4>
+              <p>Most goals against: {stats.most_goals_against_males_or_female_players || 'N/A'}</p>
+            </div>
+
+            <div>
+              <h4 className="font-medium">Home/Away advantage</h4>
+              {Object.entries(stats.home_advantage || {}).map(([team, homeStats]) => (
+                <div key={team} className="ml-4">
+                  <p className="font-medium">{team}</p>
+                  <p className="ml-2">Home: {homeStats.homeWins}W - {homeStats.homeLosses}L</p>
+                  <p className="ml-2">Away: {homeStats.awayWins}W - {homeStats.awayLosses}L</p>
+                  <p className="ml-2 text-sm">
+                    {homeStats.homeWins/(homeStats.homeWins + homeStats.homeLosses) > homeStats.awayWins/(homeStats.awayWins + homeStats.awayLosses)
+                      ? 'Home advantage: Yes'
+                      : 'Home advantage: No'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p>Loading statistics...</p>
+        )}
       </div>
     </div>
   );

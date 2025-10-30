@@ -26,7 +26,7 @@ router.get('/export/game/:id', async (req, res) => {
   const buffer = await wb.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', `attachment; filename=game-${id}.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.send(Buffer.from(buffer));
+  res.send(new Uint8Array(buffer));
 });
 
 // GET /api/export/all -> returns workbook with all games and an overall statistics sheet
@@ -34,10 +34,16 @@ router.get('/export/all', async (_req, res) => {
   const games = await prisma.game.findMany({ include: { events: { include: { scorer: true, against: true } } } });
   const wb = new ExcelJS.Workbook();
 
-  const stats: { goalsByType: Record<string, number>, goalsAgainstByType: Record<string, number>, goalsByGender: Record<string, number> } = {
+  const stats: {
+    goalsByType: Record<string, number>,
+    goalsAgainstByType: Record<string, number>,
+    goalsByGender: Record<string, number>,
+    homeAdvantage: Record<string, { homeWins: number, awayWins: number, homeLosses: number, awayLosses: number }>
+  } = {
     goalsByType: {},
     goalsAgainstByType: {},
     goalsByGender: { male: 0, female: 0 },
+    homeAdvantage: {},
   };
 
   for (const game of games) {
@@ -68,18 +74,51 @@ router.get('/export/all', async (_req, res) => {
         if (e.scorer?.gender) stats.goalsByGender[e.scorer.gender] = (stats.goalsByGender[e.scorer.gender] || 0) + 1;
       }
     }
+
+    // Track home/away advantage for this game
+    if (game.opponent) {
+      if (!stats.homeAdvantage[game.opponent]) {
+        stats.homeAdvantage[game.opponent] = {
+          homeWins: 0,
+          awayWins: 0,
+          homeLosses: 0,
+          awayLosses: 0
+        };
+      }
+      const isHome = game.home;
+      const weWon = game.scoreFor > game.scoreAgainst;
+      if (isHome) {
+        if (weWon) stats.homeAdvantage[game.opponent].homeWins++;
+        else stats.homeAdvantage[game.opponent].homeLosses++;
+      } else {
+        if (weWon) stats.homeAdvantage[game.opponent].awayWins++;
+        else stats.homeAdvantage[game.opponent].awayLosses++;
+      }
+    }
   }
 
   const wsStats = wb.addWorksheet('overall-stats');
   wsStats.addRow(['metric', 'value']);
-  wsStats.addRow(['goalsByType', JSON.stringify(stats.goalsByType)]);
-  wsStats.addRow(['goalsAgainstByType', JSON.stringify(stats.goalsAgainstByType)]);
-  wsStats.addRow(['goalsByGender', JSON.stringify(stats.goalsByGender)]);
+  
+  // Most scored goal type
+  const mostScoredType = Object.entries(stats.goalsByType).sort((a, b) => b[1] - a[1])[0];
+  wsStats.addRow(['type of goals scored the most', mostScoredType ? mostScoredType[0] : 'N/A']);
+  
+  // Most against goal type
+  const mostAgainstType = Object.entries(stats.goalsAgainstByType).sort((a, b) => b[1] - a[1])[0];
+  wsStats.addRow(['type of goals scored against the most', mostAgainstType ? mostAgainstType[0] : 'N/A']);
+  
+  // Goals against by gender
+  const mostAgainstGender = stats.goalsByGender.male > stats.goalsByGender.female ? 'male' : 'female';
+  wsStats.addRow(['most goals against males or female players', mostAgainstGender]);
+  
+  // Home/away advantage per team
+  wsStats.addRow(['home/away advantage per team', JSON.stringify(stats.homeAdvantage)]);
 
   const buffer = await wb.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', `attachment; filename=all-games.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.send(Buffer.from(buffer));
+  res.send(new Uint8Array(buffer));
 });
 
 export default router;
