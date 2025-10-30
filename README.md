@@ -2,6 +2,8 @@
 
 Local full-stack TypeScript scaffold (backend + frontend + Prisma + Docker)
 
+[![contribute](https://img.shields.io/badge/contribute-README-blue.svg)](CONTRIBUTING.md)
+
 Quickstart (macOS / zsh):
 
 1. Install dependencies for each package:

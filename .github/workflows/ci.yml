@@ -14,6 +14,8 @@ jobs:
         package: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
+      # NOTE: Authentication docs are maintained in docs/authentication.md and CONTRIBUTING.md
+      # Contributors: see those files for HTTPS/PAT and SSH instructions when configuring your local repo.
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
