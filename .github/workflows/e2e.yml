@@ -1,0 +1,61 @@
+name: E2E Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: |
+          npm --prefix backend install
+          npm --prefix backend run build
+
+      - name: Run prisma migrations for CI DB
+        run: npm --prefix backend run migrate:ci
+
+      - name: Start backend (using CI test DB)
+        run: |
+          # Start backend with DATABASE_URL pointing to test.db created by migrate:ci
+          DATABASE_URL=file:./backend/test.db npm --prefix backend run start &
+          # wait for backend to be ready
+          for i in {1..30}; do
+            if curl -sS http://localhost:4000/api/health >/dev/null 2>&1; then
+              echo "backend ready"; break; fi
+            echo "waiting..."; sleep 1
+          done
+
+      - name: Build and preview frontend
+        run: |
+          npm --prefix frontend install
+          npm --prefix frontend run build
+          # start preview in background (default port 4173)
+          npm --prefix frontend run preview &
+          for i in {1..30}; do
+            if curl -sS http://localhost:4173/ >/dev/null 2>&1; then
+              echo "frontend ready"; break; fi
+            echo "waiting for frontend..."; sleep 1
+          done
+
+      - name: Run cucumber E2E tests
+        run: |
+          npm --prefix . install --no-audit
+          npx cucumber-js --require-module ts-node/register || true
+
+      - name: Stop background processes and cleanup test DB
+        if: always()
+        run: |
+          pkill -f node || true
+          rm -f backend/test.db || true
