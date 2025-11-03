@@ -4,7 +4,9 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  // allow overriding via DATABASE_URL for CI/tests
+  // NOTE: set DATABASE_URL env var in CI or test scripts
+  url      = env("DATABASE_URL")
 }
 
 model Match {
