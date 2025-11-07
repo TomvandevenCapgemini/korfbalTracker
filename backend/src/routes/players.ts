@@ -27,4 +27,21 @@ router.get('/', async (_req, res) => {
   res.json(players);
 });
 
+// Delete a player (test helper) - also remove memberships and events referencing the player
+router.delete('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    // remove team memberships
+    await prisma.teamMembership.deleteMany({ where: { playerId: id } }).catch(()=>{});
+    // remove events where this player was scorer or against
+    await prisma.event.deleteMany({ where: { OR: [{ scorerId: id }, { againstId: id }] } }).catch(()=>{});
+    // delete player
+    await prisma.player.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Could not delete player' });
+  }
+});
+
 export default router;

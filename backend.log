@@ -1,0 +1,5 @@
+
+> backend@0.1.0 start
+> node dist/server.js
+
+Backend listening on 4000

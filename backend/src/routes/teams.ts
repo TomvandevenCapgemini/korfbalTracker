@@ -39,6 +39,9 @@ router.post('/:id/members', async (req, res) => {
   const teamId = Number(req.params.id);
   const { playerId } = req.body;
   try {
+    // prevent duplicates
+    const exists = await prisma.teamMembership.findFirst({ where: { teamId, playerId } });
+    if (exists) return res.status(400).json({ error: 'Member already exists' });
     const m = await prisma.teamMembership.create({ data: { teamId, playerId } });
     res.json(m);
   } catch (err) {
