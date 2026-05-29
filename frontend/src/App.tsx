@@ -41,11 +41,28 @@ const s = {
 
 const DOELTYPEN = ["Strafworp", "Vrije worp", "Doorloopbal", "Korte kans", "Schot"];
 const HELFTEN = ["1e helft", "2e helft", "Verlenging"];
-const ROLLEN = ["Teammanager", "Speler"];
+const ROLLEN = ["Admin", "Teammanager", "Speler"];
+
+const DEFAULT_ADMIN = { id: "admin", naam: "Manager", rol: "Admin", teamId: null, wachtwoord: "admin", protected: true };
 
 // ── localStorage helpers ───────────────────────────────────────────
 const load = (k, def) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+// Migration: ensure exactly one protected Admin user exists.
+function migrateGebruikers(list) {
+  if (!Array.isArray(list) || list.length === 0) return [DEFAULT_ADMIN];
+  let next = list.map(u => {
+    if (u.naam === "Manager" && (u.rol === "Teammanager" || u.rol === "Admin")) {
+      return { ...u, rol: "Admin", protected: true };
+    }
+    return u;
+  });
+  if (!next.some(u => u.rol === "Admin" && u.protected)) {
+    next = [DEFAULT_ADMIN, ...next];
+  }
+  return next;
+}
 
 let _id = Date.now();
 const uid = () => String(++_id);
@@ -64,7 +81,7 @@ export default function App() {
   const [teams, setTeams] = useState(() => load("ow_teams", []));
   const [spelers, setSpelers] = useState(() => load("ow_spelers", []));
   const [wedstrijden, setWedstrijden] = useState(() => load("ow_wedstrijden", []));
-  const [gebruikers, setGebruikers] = useState(() => load("ow_gebruikers", [{ id: "1", naam: "Manager", rol: "Teammanager", teamId: null, wachtwoord: "admin" }]));
+  const [gebruikers, setGebruikers] = useState(() => migrateGebruikers(load("ow_gebruikers", null)));
   const [huidigGebruiker, setHuidigGebruiker] = useState(() => load("ow_huidigGebruiker", null));
   const [tab, setTab] = useState("dashboard");
   const [loginForm, setLoginForm] = useState({ naam: "", wachtwoord: "" });
@@ -76,7 +93,18 @@ export default function App() {
   useEffect(() => { save("ow_gebruikers", gebruikers); }, [gebruikers]);
   useEffect(() => { save("ow_huidigGebruiker", huidigGebruiker); }, [huidigGebruiker]);
 
-  const isManager = huidigGebruiker?.rol === "Teammanager";
+  // Keep current user in sync with the stored gebruikers list (e.g. role/team upgrades).
+  useEffect(() => {
+    if (!huidigGebruiker) return;
+    const fresh = gebruikers.find(u => u.id === huidigGebruiker.id);
+    if (fresh && JSON.stringify(fresh) !== JSON.stringify(huidigGebruiker)) {
+      setHuidigGebruiker(fresh);
+    }
+  }, [gebruikers, huidigGebruiker]);
+
+  const isAdmin = huidigGebruiker?.rol === "Admin";
+  const isTeammanager = huidigGebruiker?.rol === "Teammanager";
+  const mijnTeamId = huidigGebruiker?.teamId;
 
   function login() {
     const g = gebruikers.find(u => u.naam === loginForm.naam && u.wachtwoord === loginForm.wachtwoord);
@@ -96,7 +124,7 @@ export default function App() {
         <input style={s.input} type="password" placeholder="Wachtwoord" value={loginForm.wachtwoord} onChange={e => setLoginForm(f => ({ ...f, wachtwoord: e.target.value }))} onKeyDown={e => e.key === "Enter" && login()} />
         {loginFout && <div style={{ color: C.gevaar, fontSize: 13, marginBottom: 8 }}>{loginFout}</div>}
         <button style={{ ...s.btn(), width: "100%", padding: 10 }} onClick={login}>Inloggen</button>
-        <div style={{ fontSize: 11, color: "#999", marginTop: 10, textAlign: "center" }}>Standaard: Manager / admin</div>
+        <div style={{ fontSize: 11, color: "#999", marginTop: 10, textAlign: "center" }}>Standaard admin: Manager / admin</div>
       </div>
     </div>
   );
@@ -106,7 +134,7 @@ export default function App() {
     { id: "wedstrijden", label: "⚽ Wedstrijden" },
     { id: "teams", label: "👕 Teams" },
     { id: "spelers", label: "👤 Spelers" },
-    ...(isManager ? [{ id: "gebruikers", label: "🔐 Gebruikers" }] : []),
+    ...(isAdmin ? [{ id: "gebruikers", label: "🔐 Gebruikers" }] : []),
     { id: "statistieken", label: "📈 Statistieken" },
   ];
 
@@ -124,22 +152,20 @@ export default function App() {
         {tabs.map(t => <button key={t.id} style={s.navBtn(tab === t.id)} onClick={() => setTab(t.id)}>{t.label}</button>)}
       </div>
       <div style={s.page}>
-        {tab === "dashboard" && <Dashboard wedstrijden={wedstrijden} spelers={spelers} teams={teams} huidigGebruiker={huidigGebruiker} />}
-        {tab === "wedstrijden" && <Wedstrijden wedstrijden={wedstrijden} setWedstrijden={setWedstrijden} teams={teams} spelers={spelers} isManager={isManager} huidigGebruiker={huidigGebruiker} />}
-        {tab === "teams" && <Teams teams={teams} setTeams={setTeams} spelers={spelers} isManager={isManager} />}
-        {tab === "spelers" && <Spelers spelers={spelers} setSpelers={setSpelers} teams={teams} wedstrijden={wedstrijden} isManager={isManager} huidigGebruiker={huidigGebruiker} />}
-        {tab === "gebruikers" && isManager && <Gebruikers gebruikers={gebruikers} setGebruikers={setGebruikers} teams={teams} />}
-        {tab === "statistieken" && <Statistieken wedstrijden={wedstrijden} spelers={spelers} teams={teams} huidigGebruiker={huidigGebruiker} isManager={isManager} />}
+        {tab === "dashboard" && <Dashboard wedstrijden={wedstrijden} spelers={spelers} teams={teams} isAdmin={isAdmin} mijnTeamId={mijnTeamId} />}
+        {tab === "wedstrijden" && <Wedstrijden wedstrijden={wedstrijden} setWedstrijden={setWedstrijden} teams={teams} spelers={spelers} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} />}
+        {tab === "teams" && <Teams teams={teams} setTeams={setTeams} spelers={spelers} gebruikers={gebruikers} setGebruikers={setGebruikers} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} huidigGebruiker={huidigGebruiker} />}
+        {tab === "spelers" && <Spelers spelers={spelers} setSpelers={setSpelers} teams={teams} wedstrijden={wedstrijden} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} />}
+        {tab === "gebruikers" && isAdmin && <Gebruikers gebruikers={gebruikers} setGebruikers={setGebruikers} teams={teams} />}
+        {tab === "statistieken" && <Statistieken wedstrijden={wedstrijden} spelers={spelers} teams={teams} isAdmin={isAdmin} mijnTeamId={mijnTeamId} />}
       </div>
     </div>
   );
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────
-function Dashboard({ wedstrijden, spelers, teams, huidigGebruiker }) {
-  const isManager = huidigGebruiker?.rol === "Teammanager";
-  const mijnTeamId = huidigGebruiker?.teamId;
-  const relevanteW = isManager ? wedstrijden : wedstrijden.filter(w => w.teamId === mijnTeamId);
+function Dashboard({ wedstrijden, spelers, teams, isAdmin, mijnTeamId }) {
+  const relevanteW = isAdmin ? wedstrijden : wedstrijden.filter(w => w.teamId === mijnTeamId);
   const gespeeld = relevanteW.filter(w => w.status === "Gespeeld");
   const gepland = relevanteW.filter(w => w.status === "Gepland");
 
@@ -191,37 +217,99 @@ function Dashboard({ wedstrijden, spelers, teams, huidigGebruiker }) {
 }
 
 // ── Teams ─────────────────────────────────────────────────────────
-function Teams({ teams, setTeams, spelers, isManager }) {
+function Teams({ teams, setTeams, spelers, gebruikers, setGebruikers, isAdmin, isTeammanager, mijnTeamId, huidigGebruiker }) {
   const [nieuw, setNieuw] = useState({ naam: "", manager: "" });
-  function voegToe() {
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({ naam: "", manager: "" });
+
+  const zichtbareTeams = isAdmin ? teams : teams.filter(t => t.id === mijnTeamId);
+  const tmZonderTeam = isTeammanager && !mijnTeamId;
+
+  function voegToeAdmin() {
     if (!nieuw.naam.trim()) return;
     setTeams(t => [...t, { id: uid(), naam: nieuw.naam.trim(), manager: nieuw.manager.trim() }]);
     setNieuw({ naam: "", manager: "" });
   }
-  function verwijder(id) { if (window.confirm("Team verwijderen?")) setTeams(t => t.filter(x => x.id !== id)); }
+
+  function maakMijnTeamAan() {
+    if (!nieuw.naam.trim()) return alert("Vul een teamnaam in.");
+    const newTeam = { id: uid(), naam: nieuw.naam.trim(), manager: nieuw.manager.trim() || huidigGebruiker.naam };
+    setTeams(t => [...t, newTeam]);
+    setGebruikers(gs => gs.map(u => u.id === huidigGebruiker.id ? { ...u, teamId: newTeam.id } : u));
+    setNieuw({ naam: "", manager: "" });
+  }
+
+  function verwijder(id) {
+    if (!isAdmin) return;
+    if (!window.confirm("Team verwijderen? Spelers en wedstrijden van dit team blijven bestaan maar verwijzen naar een verwijderd team.")) return;
+    setTeams(t => t.filter(x => x.id !== id));
+  }
+
+  function startEdit(t) {
+    if (!isAdmin && !(isTeammanager && t.id === mijnTeamId)) return;
+    setEditId(t.id);
+    setEditForm({ naam: t.naam, manager: t.manager || "" });
+  }
+
+  function saveEdit() {
+    if (!editForm.naam.trim()) return alert("Teamnaam mag niet leeg zijn.");
+    setTeams(ts => ts.map(t => t.id === editId ? { ...t, naam: editForm.naam.trim(), manager: editForm.manager.trim() } : t));
+    setEditId(null);
+  }
+
+  function kanBewerken(t) { return isAdmin || (isTeammanager && t.id === mijnTeamId); }
 
   return (
     <div>
       <h2 style={s.h2}>👕 Teams</h2>
-      {isManager && <div style={s.card}>
+
+      {tmZonderTeam && (
+        <div style={{ ...s.card, borderLeft: `4px solid ${C.oranje}` }}>
+          <h3 style={s.h3}>👋 Welkom! Maak je team aan</h3>
+          <div style={{ fontSize: 13, color: "#666", marginBottom: 10 }}>Je hebt nog geen team. Maak hier je team aan om te beginnen met spelers en wedstrijden.</div>
+          <div style={s.row}>
+            <div style={s.col}><input style={s.input} placeholder="Teamnaam" value={nieuw.naam} onChange={e => setNieuw(f => ({ ...f, naam: e.target.value }))} /></div>
+            <div style={s.col}><input style={s.input} placeholder={`Teammanager (standaard: ${huidigGebruiker.naam})`} value={nieuw.manager} onChange={e => setNieuw(f => ({ ...f, manager: e.target.value }))} /></div>
+          </div>
+          <button style={s.btn()} onClick={maakMijnTeamAan}>➕ Mijn team aanmaken</button>
+        </div>
+      )}
+
+      {isAdmin && <div style={s.card}>
         <h3 style={s.h3}>Nieuw team toevoegen</h3>
         <div style={s.row}>
           <div style={s.col}><input style={s.input} placeholder="Teamnaam" value={nieuw.naam} onChange={e => setNieuw(f => ({ ...f, naam: e.target.value }))} /></div>
           <div style={s.col}><input style={s.input} placeholder="Teammanager (naam)" value={nieuw.manager} onChange={e => setNieuw(f => ({ ...f, manager: e.target.value }))} /></div>
         </div>
-        <button style={s.btn()} onClick={voegToe}>➕ Team toevoegen</button>
+        <button style={s.btn()} onClick={voegToeAdmin}>➕ Team toevoegen</button>
       </div>}
+
       <div style={s.card}>
-        {teams.length === 0 ? <div style={{ color: "#999", fontSize: 13 }}>Nog geen teams aangemaakt.</div> :
+        {zichtbareTeams.length === 0 ? <div style={{ color: "#999", fontSize: 13 }}>{tmZonderTeam ? "Maak je team aan met het formulier hierboven." : "Nog geen teams aangemaakt."}</div> :
           <table style={s.table}>
-            <thead><tr>{["Team", "Manager", "Spelers", ...(isManager ? ["Actie"] : [])].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
-            <tbody>{teams.map(t => (
-              <tr key={t.id}>
-                <td style={s.td}><strong>{t.naam}</strong></td>
-                <td style={s.td}>{t.manager || "—"}</td>
-                <td style={s.td}>{spelers.filter(s => s.teamId === t.id).length}</td>
-                {isManager && <td style={s.td}><button style={s.btn("danger")} onClick={() => verwijder(t.id)}>🗑 Verwijder</button></td>}
-              </tr>
+            <thead><tr>{["Team", "Manager", "Spelers", "Actie"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <tbody>{zichtbareTeams.map(t => (
+              editId === t.id ? (
+                <tr key={t.id}>
+                  <td style={s.td}><input style={s.input} value={editForm.naam} onChange={e => setEditForm(f => ({ ...f, naam: e.target.value }))} /></td>
+                  <td style={s.td}><input style={s.input} value={editForm.manager} onChange={e => setEditForm(f => ({ ...f, manager: e.target.value }))} /></td>
+                  <td style={s.td}>{spelers.filter(s => s.teamId === t.id).length}</td>
+                  <td style={s.td}>
+                    <button style={s.btn("success")} onClick={saveEdit}>💾</button>
+                    <button style={s.btn("secondary")} onClick={() => setEditId(null)}>✖</button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={t.id}>
+                  <td style={s.td}><strong>{t.naam}</strong>{t.id === mijnTeamId && <span style={{ ...s.badge(C.oranje), marginLeft: 6 }}>mijn team</span>}</td>
+                  <td style={s.td}>{t.manager || "—"}</td>
+                  <td style={s.td}>{spelers.filter(s => s.teamId === t.id).length}</td>
+                  <td style={s.td}>
+                    {kanBewerken(t) && <button style={s.btn("secondary")} onClick={() => startEdit(t)}>✏ Bewerk</button>}
+                    {isAdmin && <button style={s.btn("danger")} onClick={() => verwijder(t.id)}>🗑 Verwijder</button>}
+                  </td>
+                </tr>
+              )
             ))}</tbody>
           </table>}
       </div>
@@ -230,18 +318,43 @@ function Teams({ teams, setTeams, spelers, isManager }) {
 }
 
 // ── Spelers ───────────────────────────────────────────────────────
-function Spelers({ spelers, setSpelers, teams, wedstrijden, isManager, huidigGebruiker }) {
+function Spelers({ spelers, setSpelers, teams, wedstrijden, isAdmin, isTeammanager, mijnTeamId }) {
   const [nieuw, setNieuw] = useState({ naam: "", teamId: "", nummer: "" });
-  const mijnTeamId = huidigGebruiker?.teamId;
-  const zichtbareTeams = isManager ? teams : teams.filter(t => t.id === mijnTeamId);
-  const zichtbareSpelers = isManager ? spelers : spelers.filter(s => s.teamId === mijnTeamId);
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({ naam: "", nummer: "", teamId: "" });
+
+  const beheerbareTeams = isAdmin ? teams : teams.filter(t => t.id === mijnTeamId);
+  const zichtbareSpelers = isAdmin ? spelers : spelers.filter(s => s.teamId === mijnTeamId);
+  const kanToevoegen = isAdmin || (isTeammanager && mijnTeamId);
 
   function voegToe() {
-    if (!nieuw.naam.trim() || !nieuw.teamId) return;
+    if (!nieuw.naam.trim() || !nieuw.teamId) return alert("Naam en team zijn verplicht.");
+    if (!isAdmin && nieuw.teamId !== mijnTeamId) return alert("Je kunt alleen aan je eigen team spelers toevoegen.");
     setSpelers(p => [...p, { id: uid(), naam: nieuw.naam.trim(), teamId: nieuw.teamId, nummer: nieuw.nummer }]);
     setNieuw({ naam: "", teamId: "", nummer: "" });
   }
-  function verwijder(id) { if (window.confirm("Speler verwijderen?")) setSpelers(p => p.filter(x => x.id !== id)); }
+
+  function verwijder(sp) {
+    if (!isAdmin && sp.teamId !== mijnTeamId) return alert("Je kunt alleen spelers van je eigen team verwijderen.");
+    if (window.confirm("Speler verwijderen?")) setSpelers(p => p.filter(x => x.id !== sp.id));
+  }
+
+  function startEdit(sp) {
+    if (!isAdmin && sp.teamId !== mijnTeamId) return;
+    setEditId(sp.id);
+    setEditForm({ naam: sp.naam, nummer: sp.nummer || "", teamId: sp.teamId });
+  }
+
+  function saveEdit(sp) {
+    if (!editForm.naam.trim()) return alert("Naam mag niet leeg zijn.");
+    if (!editForm.teamId) return alert("Team is verplicht.");
+    if (!isAdmin && editForm.teamId !== mijnTeamId) return alert("Je kunt een speler niet uit je team weghalen.");
+    // Note: stats survive a name/number/team change — events reference the speler by id.
+    setSpelers(ps => ps.map(p => p.id === sp.id ? { ...p, naam: editForm.naam.trim(), nummer: editForm.nummer, teamId: editForm.teamId } : p));
+    setEditId(null);
+  }
+
+  function kanBewerken(sp) { return isAdmin || (isTeammanager && sp.teamId === mijnTeamId); }
 
   function spelersStats(spelerId) {
     let doelpunten = 0, minuten = 0;
@@ -257,7 +370,7 @@ function Spelers({ spelers, setSpelers, teams, wedstrijden, isManager, huidigGeb
   return (
     <div>
       <h2 style={s.h2}>👤 Spelers</h2>
-      {(isManager || mijnTeamId) && <div style={s.card}>
+      {kanToevoegen && <div style={s.card}>
         <h3 style={s.h3}>Speler toevoegen</h3>
         <div style={s.row}>
           <div style={s.col}><input style={s.input} placeholder="Naam" value={nieuw.naam} onChange={e => setNieuw(f => ({ ...f, naam: e.target.value }))} /></div>
@@ -265,7 +378,7 @@ function Spelers({ spelers, setSpelers, teams, wedstrijden, isManager, huidigGeb
           <div style={s.col}>
             <select style={s.select} value={nieuw.teamId} onChange={e => setNieuw(f => ({ ...f, teamId: e.target.value }))}>
               <option value="">-- Selecteer team --</option>
-              {zichtbareTeams.map(t => <option key={t.id} value={t.id}>{t.naam}</option>)}
+              {beheerbareTeams.map(t => <option key={t.id} value={t.id}>{t.naam}</option>)}
             </select>
           </div>
         </div>
@@ -274,9 +387,26 @@ function Spelers({ spelers, setSpelers, teams, wedstrijden, isManager, huidigGeb
       <div style={s.card}>
         {zichtbareSpelers.length === 0 ? <div style={{ color: "#999", fontSize: 13 }}>Nog geen spelers.</div> :
           <table style={s.table}>
-            <thead><tr>{["#", "Naam", "Team", "Doelpunten", "Min. gespeeld", ...(isManager ? ["Actie"] : [])].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <thead><tr>{["#", "Naam", "Team", "Doelpunten", "Min. gespeeld", "Actie"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
             <tbody>{zichtbareSpelers.map(sp => {
               const stats = spelersStats(sp.id);
+              if (editId === sp.id) {
+                return <tr key={sp.id}>
+                  <td style={s.td}><input style={s.input} value={editForm.nummer} onChange={e => setEditForm(f => ({ ...f, nummer: e.target.value }))} /></td>
+                  <td style={s.td}><input style={s.input} value={editForm.naam} onChange={e => setEditForm(f => ({ ...f, naam: e.target.value }))} /></td>
+                  <td style={s.td}>
+                    <select style={s.select} value={editForm.teamId} onChange={e => setEditForm(f => ({ ...f, teamId: e.target.value }))}>
+                      {beheerbareTeams.map(t => <option key={t.id} value={t.id}>{t.naam}</option>)}
+                    </select>
+                  </td>
+                  <td style={s.td}>{stats.doelpunten}</td>
+                  <td style={s.td}>{stats.minuten}'</td>
+                  <td style={s.td}>
+                    <button style={s.btn("success")} onClick={() => saveEdit(sp)}>💾</button>
+                    <button style={s.btn("secondary")} onClick={() => setEditId(null)}>✖</button>
+                  </td>
+                </tr>;
+              }
               const team = teams.find(t => t.id === sp.teamId);
               return <tr key={sp.id}>
                 <td style={s.td}>{sp.nummer || "—"}</td>
@@ -284,7 +414,10 @@ function Spelers({ spelers, setSpelers, teams, wedstrijden, isManager, huidigGeb
                 <td style={s.td}>{team?.naam || "—"}</td>
                 <td style={s.td}>{stats.doelpunten}</td>
                 <td style={s.td}>{stats.minuten}'</td>
-                {isManager && <td style={s.td}><button style={s.btn("danger")} onClick={() => verwijder(sp.id)}>🗑</button></td>}
+                <td style={s.td}>
+                  {kanBewerken(sp) && <button style={s.btn("secondary")} onClick={() => startEdit(sp)}>✏</button>}
+                  {kanBewerken(sp) && <button style={s.btn("danger")} onClick={() => verwijder(sp)}>🗑</button>}
+                </td>
               </tr>;
             })}</tbody>
           </table>}
@@ -298,11 +431,22 @@ function Gebruikers({ gebruikers, setGebruikers, teams }) {
   const [nieuw, setNieuw] = useState({ naam: "", wachtwoord: "", rol: "Speler", teamId: "" });
 
   function voegToe() {
-    if (!nieuw.naam.trim() || !nieuw.wachtwoord.trim()) return;
-    setGebruikers(g => [...g, { id: uid(), ...nieuw }]);
+    if (!nieuw.naam.trim() || !nieuw.wachtwoord.trim()) return alert("Naam en wachtwoord zijn verplicht.");
+    if (gebruikers.some(g => g.naam === nieuw.naam.trim())) return alert("Gebruikersnaam bestaat al.");
+    setGebruikers(g => [...g, { id: uid(), ...nieuw, naam: nieuw.naam.trim() }]);
     setNieuw({ naam: "", wachtwoord: "", rol: "Speler", teamId: "" });
   }
-  function verwijder(id) { if (window.confirm("Gebruiker verwijderen?")) setGebruikers(g => g.filter(x => x.id !== id)); }
+
+  function verwijder(g) {
+    if (g.protected) return alert("De admin-account kan niet verwijderd worden.");
+    if (window.confirm(`Gebruiker ${g.naam} verwijderen?`)) setGebruikers(gs => gs.filter(x => x.id !== g.id));
+  }
+
+  function rolBadgeKleur(rol) {
+    if (rol === "Admin") return C.gevaar;
+    if (rol === "Teammanager") return C.oranje;
+    return "#666";
+  }
 
   return (
     <div>
@@ -311,7 +455,7 @@ function Gebruikers({ gebruikers, setGebruikers, teams }) {
         <h3 style={s.h3}>Nieuwe gebruiker</h3>
         <div style={s.row}>
           <div style={s.col}><input style={s.input} placeholder="Naam" value={nieuw.naam} onChange={e => setNieuw(f => ({ ...f, naam: e.target.value }))} /></div>
-          <div style={s.col}><input style={s.input} placeholder="Wachtwoord" value={nieuw.wachtwoord} onChange={e => setNieuw(f => ({ ...f, wachtwoord: e.target.value }))} /></div>
+          <div style={s.col}><input style={s.input} type="password" placeholder="Wachtwoord" value={nieuw.wachtwoord} onChange={e => setNieuw(f => ({ ...f, wachtwoord: e.target.value }))} /></div>
           <div style={s.col}>
             <select style={s.select} value={nieuw.rol} onChange={e => setNieuw(f => ({ ...f, rol: e.target.value }))}>
               {ROLLEN.map(r => <option key={r}>{r}</option>)}
@@ -319,7 +463,7 @@ function Gebruikers({ gebruikers, setGebruikers, teams }) {
           </div>
           <div style={s.col}>
             <select style={s.select} value={nieuw.teamId} onChange={e => setNieuw(f => ({ ...f, teamId: e.target.value }))}>
-              <option value="">-- Geen team --</option>
+              <option value="">-- Geen team (Teammanager kan zelf één aanmaken) --</option>
               {teams.map(t => <option key={t.id} value={t.id}>{t.naam}</option>)}
             </select>
           </div>
@@ -331,10 +475,12 @@ function Gebruikers({ gebruikers, setGebruikers, teams }) {
           <thead><tr>{["Naam", "Rol", "Team", "Actie"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
           <tbody>{gebruikers.map(g => (
             <tr key={g.id}>
-              <td style={s.td}>{g.naam}</td>
-              <td style={s.td}><span style={s.badge(g.rol === "Teammanager" ? C.oranje : "#666")}>{g.rol}</span></td>
+              <td style={s.td}>{g.naam} {g.protected && <span style={{ ...s.badge("#666"), marginLeft: 4 }}>system</span>}</td>
+              <td style={s.td}><span style={s.badge(rolBadgeKleur(g.rol))}>{g.rol}</span></td>
               <td style={s.td}>{teams.find(t => t.id === g.teamId)?.naam || "—"}</td>
-              <td style={s.td}><button style={s.btn("danger")} onClick={() => verwijder(g.id)}>🗑</button></td>
+              <td style={s.td}>
+                {g.protected ? <span style={{ color: "#999", fontSize: 12 }}>onverwijderbaar</span> : <button style={s.btn("danger")} onClick={() => verwijder(g)}>🗑</button>}
+              </td>
             </tr>
           ))}</tbody>
         </table>
@@ -344,20 +490,24 @@ function Gebruikers({ gebruikers, setGebruikers, teams }) {
 }
 
 // ── Wedstrijden ───────────────────────────────────────────────────
-function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isManager, huidigGebruiker }) {
+function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isAdmin, isTeammanager, mijnTeamId }) {
   const [nieuw, setNieuw] = useState({ teamId: "", tegenstander: "", thuis: true, datum: "", locatie: "" });
   const [actieveWedstrijd, setActieveWedstrijd] = useState(null);
-  const mijnTeamId = huidigGebruiker?.teamId;
-  const zichtbareW = isManager ? wedstrijden : wedstrijden.filter(w => w.teamId === mijnTeamId);
-  const planbareTeams = isManager ? teams : teams.filter(t => t.id === mijnTeamId);
+  const zichtbareW = isAdmin ? wedstrijden : wedstrijden.filter(w => w.teamId === mijnTeamId);
+  const planbareTeams = isAdmin ? teams : teams.filter(t => t.id === mijnTeamId);
+  const kanPlannen = isAdmin || (isTeammanager && mijnTeamId);
 
   function planWedstrijd() {
     if (!nieuw.teamId || !nieuw.tegenstander.trim() || !nieuw.datum) return alert("Kies ons team, tegenstander en datum.");
+    if (!isAdmin && nieuw.teamId !== mijnTeamId) return alert("Je kunt alleen wedstrijden voor je eigen team inplannen.");
     setWedstrijden(w => [...w, { id: uid(), teamId: nieuw.teamId, tegenstander: nieuw.tegenstander.trim(), thuis: nieuw.thuis, datum: nieuw.datum, locatie: nieuw.locatie, status: "Gepland", events: [], speeltijden: [] }]);
     setNieuw({ teamId: "", tegenstander: "", thuis: true, datum: "", locatie: "" });
   }
 
-  function verwijder(id) { if (window.confirm("Wedstrijd verwijderen?")) setWedstrijden(w => w.filter(x => x.id !== id)); }
+  function verwijder(w) {
+    if (!isAdmin && w.teamId !== mijnTeamId) return alert("Je kunt alleen wedstrijden van je eigen team verwijderen.");
+    if (window.confirm("Wedstrijd verwijderen?")) setWedstrijden(ws => ws.filter(x => x.id !== w.id));
+  }
 
   function exporteer(w) {
     const onsNaam = teams.find(t => t.id === w.teamId)?.naam || "?";
@@ -377,10 +527,8 @@ function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isManager, h
   if (actieveWedstrijd) {
     const w = wedstrijden.find(x => x.id === actieveWedstrijd);
     if (!w) { setActieveWedstrijd(null); return null; }
-    return <WedstrijdDetail wedstrijd={w} wedstrijden={wedstrijden} setWedstrijden={setWedstrijden} teams={teams} spelers={spelers} onTerug={() => setActieveWedstrijd(null)} isManager={isManager} mijnTeamId={mijnTeamId} />;
+    return <WedstrijdDetail wedstrijd={w} wedstrijden={wedstrijden} setWedstrijden={setWedstrijden} teams={teams} spelers={spelers} onTerug={() => setActieveWedstrijd(null)} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} />;
   }
-
-  const kanPlannen = isManager || (mijnTeamId && planbareTeams.length > 0);
 
   return (
     <div>
@@ -419,6 +567,7 @@ function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isManager, h
               const uitNaam = w.thuis ? tegenNaam : onsNaam;
               const thuisDp = w.thuis ? onsDp : tegenDp;
               const uitDp = w.thuis ? tegenDp : onsDp;
+              const kanVerwijderen = isAdmin || (isTeammanager && w.teamId === mijnTeamId);
               return <tr key={w.id}>
                 <td style={s.td}>{w.datum}</td>
                 <td style={s.td}>{thuisNaam}</td>
@@ -429,7 +578,7 @@ function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isManager, h
                 <td style={s.td}>
                   <button style={s.btn("secondary")} onClick={() => setActieveWedstrijd(w.id)}>▶ Open</button>
                   <button style={s.btn("secondary")} onClick={() => exporteer(w)}>📥 Export</button>
-                  {isManager && <button style={s.btn("danger")} onClick={() => verwijder(w.id)}>🗑</button>}
+                  {kanVerwijderen && <button style={s.btn("danger")} onClick={() => verwijder(w)}>🗑</button>}
                 </td>
               </tr>;
             })}</tbody>
@@ -440,7 +589,7 @@ function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isManager, h
 }
 
 // ── WedstrijdDetail ───────────────────────────────────────────────
-function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spelers, onTerug, isManager, mijnTeamId }) {
+function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spelers, onTerug, isAdmin, isTeammanager, mijnTeamId }) {
   const onsTeam = teams.find(t => t.id === w.teamId);
   const onsSpelers = spelers.filter(s => s.teamId === w.teamId);
 
@@ -492,7 +641,7 @@ function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spe
   const linksDp = w.thuis ? onsDp : tegenDp;
   const rechtsDp = w.thuis ? tegenDp : onsDp;
 
-  const kanInvoeren = isManager || (mijnTeamId && mijnTeamId === w.teamId);
+  const kanInvoeren = isAdmin || (isTeammanager && mijnTeamId === w.teamId);
 
   return (
     <div>
@@ -648,11 +797,10 @@ function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spe
 }
 
 // ── Statistieken ──────────────────────────────────────────────────
-function Statistieken({ wedstrijden, spelers, teams, huidigGebruiker, isManager }) {
+function Statistieken({ wedstrijden, spelers, teams, isAdmin, mijnTeamId }) {
   const [statTab, setStatTab] = useState("teams");
-  const mijnTeamId = huidigGebruiker?.teamId;
   const gespeeld = wedstrijden.filter(w => w.status === "Gespeeld");
-  const relevanteTeams = isManager ? teams : teams.filter(t => t.id === mijnTeamId);
+  const relevanteTeams = isAdmin ? teams : teams.filter(t => t.id === mijnTeamId);
 
   function teamStats(teamId) {
     const wedstrs = gespeeld.filter(w => w.teamId === teamId);
@@ -695,9 +843,9 @@ function Statistieken({ wedstrijden, spelers, teams, huidigGebruiker, isManager 
   }
 
   function exporteerSpelers() {
-    const rows = spelers.map(sp => {
+    const rows = relevanteSpelers.map(sp => {
       const st = spelersStats(sp.id);
-      return { Naam: sp.naam, Team: teams.find(t => t.id === sp.teamId)?.naam || "", "Totaal doelpunten": st.doelpunten, ...Object.fromEntries(DOELTYPEN.map(d => [d, st.doeltypen[d] || 0])) };
+      return { Naam: sp.naam, Team: teams.find(t => t.id === sp.teamId)?.naam || "", "Totaal doelpunten": st.doelpunten, "Tegen gescoord": st.tegenGescoord, ...Object.fromEntries(DOELTYPEN.map(d => [d, st.doeltypen[d] || 0])) };
     });
     exportCSV(rows, "speler_statistieken.csv");
   }
@@ -710,7 +858,7 @@ function Statistieken({ wedstrijden, spelers, teams, huidigGebruiker, isManager 
     exportCSV(rows, "team_statistieken.csv");
   }
 
-  const relevanteSpelers = isManager ? spelers : spelers.filter(s => s.teamId === mijnTeamId);
+  const relevanteSpelers = isAdmin ? spelers : spelers.filter(s => s.teamId === mijnTeamId);
 
   return (
     <div>
