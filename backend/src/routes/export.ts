@@ -24,9 +24,15 @@ router.get('/export/game/:id', async (req, res) => {
   }
 
   const buffer = await wb.xlsx.writeBuffer();
-  res.setHeader('Content-Disposition', `attachment; filename=game-${id}.xlsx`);
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.send(new Uint8Array(buffer));
+  // ensure we send a Node Buffer and a Content-Length to avoid transport/truncation issues
+  const nodeBuffer = Buffer.from(buffer as any);
+  res.writeHead(200, {
+    'Content-Disposition': `attachment; filename=game-${id}.xlsx`,
+    'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Length': String(nodeBuffer.length),
+    'Content-Transfer-Encoding': 'binary',
+  });
+  res.end(nodeBuffer);
 });
 
 // GET /api/export/all -> returns workbook with all games and an overall statistics sheet
@@ -116,9 +122,14 @@ router.get('/export/all', async (_req, res) => {
   wsStats.addRow(['home/away advantage per team', JSON.stringify(stats.homeAdvantage)]);
 
   const buffer = await wb.xlsx.writeBuffer();
-  res.setHeader('Content-Disposition', `attachment; filename=all-games.xlsx`);
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.send(new Uint8Array(buffer));
+  const nodeBuffer = Buffer.from(buffer as any);
+  res.writeHead(200, {
+    'Content-Disposition': `attachment; filename=all-games.xlsx`,
+    'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Length': String(nodeBuffer.length),
+    'Content-Transfer-Encoding': 'binary',
+  });
+  res.end(nodeBuffer);
 });
 
 export default router;

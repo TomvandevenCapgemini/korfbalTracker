@@ -39,12 +39,21 @@ When('I add players Jonas, Esmee and Floor to {string}', async function (teamNam
 When('I assign {string} to game id {int}', async function (teamName, gameId) {
   const teams = (await this.api.get('/api/teams')).data;
   const team = teams.find(t=>t.name===teamName) || this.latestTeam;
-  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  let realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  // if the referenced game doesn't exist, create one so assignment doesn't fail in tests
+  const existing = await this.api.get(`/api/games/${realId}`).catch(()=>null);
+  if (!existing || existing.status === 404) {
+    const created = await this.api.post('/api/games', { opponent: `Game ${gameId}`, date: new Date().toISOString().slice(0,10), home: true });
+    realId = created.data.id;
+    this._gameAlias = this._gameAlias || {};
+    this._gameAlias[gameId] = realId;
+  }
   await this.api.post(`/api/games/${realId}/team`, { teamId: team.id });
 });
 
 Then('game id {int} should have team {string} with members Jonas, Esmee, Floor', async function (gameId, teamName) {
-  const res = await this.api.get(`/api/games/${gameId}`);
+  const realId = (this._gameAlias && this._gameAlias[gameId]) ? this._gameAlias[gameId] : gameId;
+  const res = await this.api.get(`/api/games/${realId}`);
   const teamId = res.data.teamId;
   assert(teamId, 'game has no team assigned');
   const teamRes = await this.api.get(`/api/teams/${teamId}`);
@@ -57,6 +66,44 @@ Given('the player list contains:', async function (dataTable) {
   for (const r of rows) {
     await this.api.post('/api/players', { name: r.name, gender: r.gender }).catch(()=>{});
   }
+});
+
+Given('a list of players exists', async function () {
+  // create a reasonable default list used by feature scenarios
+  const defaults = ['Jonas','Esmee','Floor','Floortje','Jarno','Kian','Thomas','Tess','Gita','Demi'];
+  for (const name of defaults) {
+    await this.api.post('/api/players', { name, gender: /[aeiou]$/.test(name) ? 'female' : 'male' }).catch(()=>{});
+  }
+});
+
+When('I delete a player from the list', async function () {
+  // pick the first player returned by the API and delete them
+  const players = (await this.api.get('/api/players')).data;
+  if (!players.length) throw new Error('no players to delete');
+  const p = players[0];
+  await this.api.delete(`/api/players/${p.id}`);
+  this._lastDeletedPlayer = p.name;
+});
+
+Then('the player should no longer appear in the list', async function () {
+  const players = (await this.api.get('/api/players')).data;
+  const names = players.map((p) => p.name);
+  const name = this._lastDeletedPlayer;
+  if (!name) throw new Error('no player was deleted earlier in the scenario');
+  assert(!names.includes(name), `player ${name} still present`);
+});
+
+When('I delete player {string}', async function (name) {
+  const players = (await this.api.get('/api/players')).data;
+  const p = players.find((x) => x.name === name);
+  if (!p) throw new Error(`player ${name} not found`);
+  await this.api.delete(`/api/players/${p.id}`);
+});
+
+Then('player {string} should not be present in the player list', async function (name) {
+  const players = (await this.api.get('/api/players')).data;
+  const names = players.map((p) => p.name);
+  assert(!names.includes(name), `player ${name} still present`);
 });
 
 When('I view player Jonas', async function () {

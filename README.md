@@ -1,4 +1,4 @@
-# Korfbal Tracker
+# Korfbal Tracker V1
 
 Local full-stack TypeScript scaffold (backend + frontend + Prisma + Docker)
 
