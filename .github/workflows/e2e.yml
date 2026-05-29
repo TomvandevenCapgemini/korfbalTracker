@@ -28,6 +28,9 @@ jobs:
           npm --prefix backend ci
           npm --prefix frontend ci
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Build backend and frontend
         run: |
           npm --prefix backend run build
