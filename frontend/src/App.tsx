@@ -139,7 +139,7 @@ export default function App() {
 function Dashboard({ wedstrijden, spelers, teams, huidigGebruiker }) {
   const isManager = huidigGebruiker?.rol === "Teammanager";
   const mijnTeamId = huidigGebruiker?.teamId;
-  const relevanteW = isManager ? wedstrijden : wedstrijden.filter(w => w.thuisTeamId === mijnTeamId || w.uitTeamId === mijnTeamId);
+  const relevanteW = isManager ? wedstrijden : wedstrijden.filter(w => w.teamId === mijnTeamId);
   const gespeeld = relevanteW.filter(w => w.status === "Gespeeld");
   const gepland = relevanteW.filter(w => w.status === "Gepland");
 
@@ -169,13 +169,18 @@ function Dashboard({ wedstrijden, spelers, teams, huidigGebruiker }) {
           <table style={s.table}>
             <thead><tr>{["Datum", "Thuis", "Score", "Uit", "Locatie"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
             <tbody>{gespeeld.slice(-5).reverse().map(w => {
-              const thuisDp = w.events?.filter(e => e.type === "doelpunt" && e.scorendTeamId === w.thuisTeamId).length || 0;
-              const uitDp = w.events?.filter(e => e.type === "doelpunt" && e.scorendTeamId === w.uitTeamId).length || 0;
+              const onsNaam = teams.find(t => t.id === w.teamId)?.naam || "—";
+              const onsDp = w.events?.filter(e => e.type === "doelpunt" && e.voorOns).length || 0;
+              const tegenDp = w.events?.filter(e => e.type === "doelpunt" && !e.voorOns).length || 0;
+              const thuisNaam = w.thuis ? onsNaam : (w.tegenstander || "—");
+              const uitNaam = w.thuis ? (w.tegenstander || "—") : onsNaam;
+              const thuisDp = w.thuis ? onsDp : tegenDp;
+              const uitDp = w.thuis ? tegenDp : onsDp;
               return <tr key={w.id}>
                 <td style={s.td}>{w.datum}</td>
-                <td style={s.td}>{teams.find(t => t.id === w.thuisTeamId)?.naam || "—"}</td>
+                <td style={s.td}>{thuisNaam}</td>
                 <td style={{ ...s.td, fontWeight: 700, color: C.oranje }}>{thuisDp} – {uitDp}</td>
-                <td style={s.td}>{teams.find(t => t.id === w.uitTeamId)?.naam || "—"}</td>
+                <td style={s.td}>{uitNaam}</td>
                 <td style={s.td}>{w.locatie || "—"}</td>
               </tr>;
             })}</tbody>
@@ -242,10 +247,7 @@ function Spelers({ spelers, setSpelers, teams, wedstrijden, isManager, huidigGeb
     let doelpunten = 0, minuten = 0;
     wedstrijden.forEach(w => {
       (w.events || []).forEach(e => {
-        if (e.type === "doelpunt" && e.spelerId === spelerId) doelpunten++;
-        if (e.type === "wissel" && e.inSpelerId === spelerId && e.uitSpelerId) {
-          // minuten worden bijgehouden in wissel-events
-        }
+        if (e.type === "doelpunt" && e.voorOns && e.spelerId === spelerId) doelpunten++;
       });
       (w.speeltijden || []).filter(st => st.spelerId === spelerId).forEach(st => { minuten += st.minuten || 0; });
     });
@@ -343,32 +345,33 @@ function Gebruikers({ gebruikers, setGebruikers, teams }) {
 
 // ── Wedstrijden ───────────────────────────────────────────────────
 function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isManager, huidigGebruiker }) {
-  const [nieuw, setNieuw] = useState({ thuisTeamId: "", uitTeamId: "", datum: "", locatie: "", thuis: true });
+  const [nieuw, setNieuw] = useState({ teamId: "", tegenstander: "", thuis: true, datum: "", locatie: "" });
   const [actieveWedstrijd, setActieveWedstrijd] = useState(null);
   const mijnTeamId = huidigGebruiker?.teamId;
-  const zichtbareW = isManager ? wedstrijden : wedstrijden.filter(w => w.thuisTeamId === mijnTeamId || w.uitTeamId === mijnTeamId);
+  const zichtbareW = isManager ? wedstrijden : wedstrijden.filter(w => w.teamId === mijnTeamId);
+  const planbareTeams = isManager ? teams : teams.filter(t => t.id === mijnTeamId);
 
   function planWedstrijd() {
-    if (!nieuw.thuisTeamId || !nieuw.uitTeamId || !nieuw.datum) return;
-    if (nieuw.thuisTeamId === nieuw.uitTeamId) return alert("Kies twee verschillende teams.");
-    setWedstrijden(w => [...w, { id: uid(), ...nieuw, status: "Gepland", events: [], speeltijden: [] }]);
-    setNieuw({ thuisTeamId: "", uitTeamId: "", datum: "", locatie: "", thuis: true });
+    if (!nieuw.teamId || !nieuw.tegenstander.trim() || !nieuw.datum) return alert("Kies ons team, tegenstander en datum.");
+    setWedstrijden(w => [...w, { id: uid(), teamId: nieuw.teamId, tegenstander: nieuw.tegenstander.trim(), thuis: nieuw.thuis, datum: nieuw.datum, locatie: nieuw.locatie, status: "Gepland", events: [], speeltijden: [] }]);
+    setNieuw({ teamId: "", tegenstander: "", thuis: true, datum: "", locatie: "" });
   }
 
   function verwijder(id) { if (window.confirm("Wedstrijd verwijderen?")) setWedstrijden(w => w.filter(x => x.id !== id)); }
 
   function exporteer(w) {
-    const thuisNaam = teams.find(t => t.id === w.thuisTeamId)?.naam || "?";
-    const uitNaam = teams.find(t => t.id === w.uitTeamId)?.naam || "?";
+    const onsNaam = teams.find(t => t.id === w.teamId)?.naam || "?";
+    const tegenNaam = w.tegenstander || "?";
     const rows = (w.events || []).map(e => ({
       Minuut: e.minuut, Helft: e.helft, Type: e.type === "doelpunt" ? "Doelpunt" : "Wissel",
-      Doeltype: e.doeltype || "", Scorer: spelers.find(s => s.id === e.spelerId)?.naam || "",
-      "Gescoord tegen": spelers.find(s => s.id === e.tegenSpelerId)?.naam || "",
-      Team: teams.find(t => t.id === e.scorendTeamId)?.naam || "",
+      Doeltype: e.doeltype || "",
+      "Voor wie": e.type === "doelpunt" ? (e.voorOns ? onsNaam : tegenNaam) : "",
+      Scorer: e.type === "doelpunt" && e.voorOns ? (spelers.find(s => s.id === e.spelerId)?.naam || "") : "",
+      "Tegen speler": e.type === "doelpunt" && !e.voorOns ? (spelers.find(s => s.id === e.tegenSpelerId)?.naam || "") : "",
       "Wissel uit": spelers.find(s => s.id === e.uitSpelerId)?.naam || "",
       "Wissel in": spelers.find(s => s.id === e.inSpelerId)?.naam || "",
     }));
-    exportCSV(rows, `${thuisNaam}_vs_${uitNaam}_${w.datum}.csv`);
+    exportCSV(rows, `${onsNaam}_vs_${tegenNaam}_${w.datum}.csv`);
   }
 
   if (actieveWedstrijd) {
@@ -377,22 +380,25 @@ function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isManager, h
     return <WedstrijdDetail wedstrijd={w} wedstrijden={wedstrijden} setWedstrijden={setWedstrijden} teams={teams} spelers={spelers} onTerug={() => setActieveWedstrijd(null)} isManager={isManager} mijnTeamId={mijnTeamId} />;
   }
 
+  const kanPlannen = isManager || (mijnTeamId && planbareTeams.length > 0);
+
   return (
     <div>
       <h2 style={s.h2}>⚽ Wedstrijden</h2>
-      {isManager && <div style={s.card}>
+      {kanPlannen && <div style={s.card}>
         <h3 style={s.h3}>Wedstrijd inplannen</h3>
         <div style={s.row}>
           <div style={s.col}>
-            <select style={s.select} value={nieuw.thuisTeamId} onChange={e => setNieuw(f => ({ ...f, thuisTeamId: e.target.value }))}>
-              <option value="">-- Thuisteam --</option>
-              {teams.map(t => <option key={t.id} value={t.id}>{t.naam}</option>)}
+            <select style={s.select} value={nieuw.teamId} onChange={e => setNieuw(f => ({ ...f, teamId: e.target.value }))}>
+              <option value="">-- Ons team --</option>
+              {planbareTeams.map(t => <option key={t.id} value={t.id}>{t.naam}</option>)}
             </select>
           </div>
+          <div style={s.col}><input style={s.input} placeholder="Tegenstander" value={nieuw.tegenstander} onChange={e => setNieuw(f => ({ ...f, tegenstander: e.target.value }))} /></div>
           <div style={s.col}>
-            <select style={s.select} value={nieuw.uitTeamId} onChange={e => setNieuw(f => ({ ...f, uitTeamId: e.target.value }))}>
-              <option value="">-- Uitteam --</option>
-              {teams.map(t => <option key={t.id} value={t.id}>{t.naam}</option>)}
+            <select style={s.select} value={nieuw.thuis ? "thuis" : "uit"} onChange={e => setNieuw(f => ({ ...f, thuis: e.target.value === "thuis" }))}>
+              <option value="thuis">🏠 Thuiswedstrijd</option>
+              <option value="uit">✈ Uitwedstrijd</option>
             </select>
           </div>
           <div style={s.col}><input style={s.input} type="date" value={nieuw.datum} onChange={e => setNieuw(f => ({ ...f, datum: e.target.value }))} /></div>
@@ -405,13 +411,19 @@ function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isManager, h
           <table style={s.table}>
             <thead><tr>{["Datum", "Thuis", "Score", "Uit", "Locatie", "Status", "Acties"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
             <tbody>{[...zichtbareW].sort((a, b) => b.datum.localeCompare(a.datum)).map(w => {
-              const thuisDp = w.events?.filter(e => e.type === "doelpunt" && e.scorendTeamId === w.thuisTeamId).length || 0;
-              const uitDp = w.events?.filter(e => e.type === "doelpunt" && e.scorendTeamId === w.uitTeamId).length || 0;
+              const onsNaam = teams.find(t => t.id === w.teamId)?.naam || "?";
+              const tegenNaam = w.tegenstander || "?";
+              const onsDp = w.events?.filter(e => e.type === "doelpunt" && e.voorOns).length || 0;
+              const tegenDp = w.events?.filter(e => e.type === "doelpunt" && !e.voorOns).length || 0;
+              const thuisNaam = w.thuis ? onsNaam : tegenNaam;
+              const uitNaam = w.thuis ? tegenNaam : onsNaam;
+              const thuisDp = w.thuis ? onsDp : tegenDp;
+              const uitDp = w.thuis ? tegenDp : onsDp;
               return <tr key={w.id}>
                 <td style={s.td}>{w.datum}</td>
-                <td style={s.td}>{teams.find(t => t.id === w.thuisTeamId)?.naam || "?"}</td>
+                <td style={s.td}>{thuisNaam}</td>
                 <td style={{ ...s.td, fontWeight: 700, color: C.oranje }}>{w.status === "Gespeeld" ? `${thuisDp} – ${uitDp}` : "—"}</td>
-                <td style={s.td}>{teams.find(t => t.id === w.uitTeamId)?.naam || "?"}</td>
+                <td style={s.td}>{uitNaam}</td>
                 <td style={s.td}>{w.locatie || "—"}</td>
                 <td style={s.td}><span style={s.badge(w.status === "Gespeeld" ? C.succes : C.oranje)}>{w.status}</span></td>
                 <td style={s.td}>
@@ -429,33 +441,32 @@ function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isManager, h
 
 // ── WedstrijdDetail ───────────────────────────────────────────────
 function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spelers, onTerug, isManager, mijnTeamId }) {
-  const thuisTeam = teams.find(t => t.id === w.thuisTeamId);
-  const uitTeam = teams.find(t => t.id === w.uitTeamId);
-  const thuisSpelers = spelers.filter(s => s.teamId === w.thuisTeamId);
-  const uitSpelers = spelers.filter(s => s.teamId === w.uitTeamId);
-  const alleSpelers = [...thuisSpelers, ...uitSpelers];
+  const onsTeam = teams.find(t => t.id === w.teamId);
+  const onsSpelers = spelers.filter(s => s.teamId === w.teamId);
 
-  const [doelForm, setDoelForm] = useState({ minuut: "", helft: "1e helft", doeltype: DOELTYPEN[0], spelerId: "", tegenSpelerId: "", scorendTeamId: w.thuisTeamId });
-  const [wisselForm, setWisselForm] = useState({ minuut: "", helft: "1e helft", teamId: w.thuisTeamId, uitSpelerId: "", inSpelerId: "" });
+  const [doelForm, setDoelForm] = useState({ minuut: "", helft: "1e helft", doeltype: DOELTYPEN[0], voorOns: true, spelerId: "", tegenSpelerId: "" });
+  const [wisselForm, setWisselForm] = useState({ minuut: "", helft: "1e helft", uitSpelerId: "", inSpelerId: "" });
   const [actieTab, setActieTab] = useState("doelpunt");
 
   const updateW = (fn) => setWedstrijden(ws => ws.map(x => x.id === w.id ? fn(x) : x));
 
   function voegDoelToe() {
-    if (!doelForm.minuut || !doelForm.spelerId) return alert("Vul minuut en scorer in.");
+    if (!doelForm.minuut) return alert("Vul minuut in.");
+    if (doelForm.voorOns && !doelForm.spelerId) return alert("Kies de scorer.");
     const evt = { id: uid(), type: "doelpunt", ...doelForm, minuut: Number(doelForm.minuut) };
     updateW(x => ({ ...x, events: [...(x.events || []), evt], status: "Gespeeld" }));
+    setDoelForm(f => ({ ...f, minuut: "", spelerId: "", tegenSpelerId: "" }));
   }
 
   function voegWisselToe() {
     if (!wisselForm.minuut || !wisselForm.uitSpelerId || !wisselForm.inSpelerId) return alert("Vul alle wisselgegevens in.");
     const evt = { id: uid(), type: "wissel", ...wisselForm, minuut: Number(wisselForm.minuut) };
-    // Bereken speeltijden
     updateW(x => {
       const newEvents = [...(x.events || []), evt];
       const speeltijden = berekenSpeeltijden(newEvents);
       return { ...x, events: newEvents, speeltijden, status: "Gespeeld" };
     });
+    setWisselForm(f => ({ ...f, minuut: "", uitSpelerId: "", inSpelerId: "" }));
   }
 
   function berekenSpeeltijden(events) {
@@ -472,11 +483,16 @@ function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spe
 
   function verwijderEvent(id) { updateW(x => ({ ...x, events: (x.events || []).filter(e => e.id !== id) })); }
 
-  const thuisDp = (w.events || []).filter(e => e.type === "doelpunt" && e.scorendTeamId === w.thuisTeamId).length;
-  const uitDp = (w.events || []).filter(e => e.type === "doelpunt" && e.scorendTeamId === w.uitTeamId).length;
+  const onsDp = (w.events || []).filter(e => e.type === "doelpunt" && e.voorOns).length;
+  const tegenDp = (w.events || []).filter(e => e.type === "doelpunt" && !e.voorOns).length;
+  const onsNaam = onsTeam?.naam || "Ons team";
+  const tegenNaam = w.tegenstander || "Tegenstander";
+  const linksNaam = w.thuis ? onsNaam : tegenNaam;
+  const rechtsNaam = w.thuis ? tegenNaam : onsNaam;
+  const linksDp = w.thuis ? onsDp : tegenDp;
+  const rechtsDp = w.thuis ? tegenDp : onsDp;
 
-  const kanInvoeren = isManager || (mijnTeamId && (mijnTeamId === w.thuisTeamId || mijnTeamId === w.uitTeamId));
-  const invoerTeams = isManager ? teams.filter(t => t.id === w.thuisTeamId || t.id === w.uitTeamId) : teams.filter(t => t.id === mijnTeamId && (t.id === w.thuisTeamId || t.id === w.uitTeamId));
+  const kanInvoeren = isManager || (mijnTeamId && mijnTeamId === w.teamId);
 
   return (
     <div>
@@ -486,12 +502,12 @@ function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spe
           <div style={{ fontSize: 13, color: "#666", marginBottom: 4 }}>{w.datum} · {w.locatie || "Onbekende locatie"}</div>
           <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{thuisTeam?.naam || "Thuis"}</div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{linksNaam}</div>
               <div style={{ fontSize: 11, color: "#888" }}>🏠 Thuis</div>
             </div>
-            <div style={{ fontSize: 36, fontWeight: 900, color: C.oranje, minWidth: 80, textAlign: "center" }}>{thuisDp} – {uitDp}</div>
+            <div style={{ fontSize: 36, fontWeight: 900, color: C.oranje, minWidth: 80, textAlign: "center" }}>{linksDp} – {rechtsDp}</div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{uitTeam?.naam || "Uit"}</div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{rechtsNaam}</div>
               <div style={{ fontSize: 11, color: "#888" }}>✈ Uit</div>
             </div>
           </div>
@@ -513,6 +529,12 @@ function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spe
               <h3 style={s.h3}>Doelpunt registreren</h3>
               <div style={s.row}>
                 <div style={s.col}>
+                  <select style={s.select} value={doelForm.voorOns ? "ons" : "tegen"} onChange={e => setDoelForm(f => ({ ...f, voorOns: e.target.value === "ons", spelerId: "", tegenSpelerId: "" }))}>
+                    <option value="ons">⚽ {onsNaam} (ons)</option>
+                    <option value="tegen">⚽ {tegenNaam} (tegen)</option>
+                  </select>
+                </div>
+                <div style={s.col}>
                   <select style={s.select} value={doelForm.helft} onChange={e => setDoelForm(f => ({ ...f, helft: e.target.value }))}>
                     {HELFTEN.map(h => <option key={h}>{h}</option>)}
                   </select>
@@ -525,24 +547,21 @@ function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spe
                 </div>
               </div>
               <div style={s.row}>
-                <div style={s.col}>
-                  <select style={s.select} value={doelForm.scorendTeamId} onChange={e => setDoelForm(f => ({ ...f, scorendTeamId: e.target.value, spelerId: "", tegenSpelerId: "" }))}>
-                    <option value={w.thuisTeamId}>{thuisTeam?.naam} (thuis)</option>
-                    <option value={w.uitTeamId}>{uitTeam?.naam} (uit)</option>
-                  </select>
-                </div>
-                <div style={s.col}>
-                  <select style={s.select} value={doelForm.spelerId} onChange={e => setDoelForm(f => ({ ...f, spelerId: e.target.value }))}>
-                    <option value="">-- Scorer --</option>
-                    {spelers.filter(s => s.teamId === doelForm.scorendTeamId).map(s => <option key={s.id} value={s.id}>{s.naam}</option>)}
-                  </select>
-                </div>
-                <div style={s.col}>
-                  <select style={s.select} value={doelForm.tegenSpelerId} onChange={e => setDoelForm(f => ({ ...f, tegenSpelerId: e.target.value }))}>
-                    <option value="">-- Gescoord tegen --</option>
-                    {spelers.filter(s => s.teamId !== doelForm.scorendTeamId).map(s => <option key={s.id} value={s.id}>{s.naam}</option>)}
-                  </select>
-                </div>
+                {doelForm.voorOns ? (
+                  <div style={s.col}>
+                    <select style={s.select} value={doelForm.spelerId} onChange={e => setDoelForm(f => ({ ...f, spelerId: e.target.value }))}>
+                      <option value="">-- Scorer (uit ons team) --</option>
+                      {onsSpelers.map(sp => <option key={sp.id} value={sp.id}>{sp.naam}</option>)}
+                    </select>
+                  </div>
+                ) : (
+                  <div style={s.col}>
+                    <select style={s.select} value={doelForm.tegenSpelerId} onChange={e => setDoelForm(f => ({ ...f, tegenSpelerId: e.target.value }))}>
+                      <option value="">-- Tegen welke speler (optioneel) --</option>
+                      {onsSpelers.map(sp => <option key={sp.id} value={sp.id}>{sp.naam}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
               <button style={s.btn()} onClick={voegDoelToe}>✅ Doelpunt opslaan</button>
             </div>
@@ -550,7 +569,7 @@ function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spe
 
           {actieTab === "wissel" && (
             <div>
-              <h3 style={s.h3}>Wissel registreren</h3>
+              <h3 style={s.h3}>Wissel registreren ({onsNaam})</h3>
               <div style={s.row}>
                 <div style={s.col}>
                   <select style={s.select} value={wisselForm.helft} onChange={e => setWisselForm(f => ({ ...f, helft: e.target.value }))}>
@@ -558,23 +577,18 @@ function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spe
                   </select>
                 </div>
                 <div style={s.col}><input style={s.input} type="number" placeholder="Minuut" min={1} max={120} value={wisselForm.minuut} onChange={e => setWisselForm(f => ({ ...f, minuut: e.target.value }))} /></div>
-                <div style={s.col}>
-                  <select style={s.select} value={wisselForm.teamId} onChange={e => setWisselForm(f => ({ ...f, teamId: e.target.value, uitSpelerId: "", inSpelerId: "" }))}>
-                    {invoerTeams.map(t => <option key={t.id} value={t.id}>{t.naam}</option>)}
-                  </select>
-                </div>
               </div>
               <div style={s.row}>
                 <div style={s.col}>
                   <select style={s.select} value={wisselForm.uitSpelerId} onChange={e => setWisselForm(f => ({ ...f, uitSpelerId: e.target.value }))}>
                     <option value="">-- Gaat eruit --</option>
-                    {spelers.filter(s => s.teamId === wisselForm.teamId).map(s => <option key={s.id} value={s.id}>{s.naam}</option>)}
+                    {onsSpelers.map(sp => <option key={sp.id} value={sp.id}>{sp.naam}</option>)}
                   </select>
                 </div>
                 <div style={s.col}>
                   <select style={s.select} value={wisselForm.inSpelerId} onChange={e => setWisselForm(f => ({ ...f, inSpelerId: e.target.value }))}>
                     <option value="">-- Komt erin --</option>
-                    {spelers.filter(s => s.teamId === wisselForm.teamId).map(s => <option key={s.id} value={s.id}>{s.naam}</option>)}
+                    {onsSpelers.map(sp => <option key={sp.id} value={sp.id}>{sp.naam}</option>)}
                   </select>
                 </div>
               </div>
@@ -588,19 +602,27 @@ function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spe
         <h3 style={s.h3}>📋 Wedstrijdverloop</h3>
         {(!w.events || w.events.length === 0) ? <div style={{ color: "#999", fontSize: 13 }}>Nog geen events geregistreerd.</div> :
           <table style={s.table}>
-            <thead><tr>{["Min.", "Helft", "Type", "Detail", "Speler", "Tegen / Wissel", "Team", "Actie"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
-            <tbody>{[...w.events].sort((a, b) => a.minuut - b.minuut).map(e => (
-              <tr key={e.id}>
+            <thead><tr>{["Min.", "Helft", "Type", "Detail", "Voor wie", "Speler", "Tegen / Wissel", "Actie"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <tbody>{[...w.events].sort((a, b) => a.minuut - b.minuut).map(e => {
+              const isDoel = e.type === "doelpunt";
+              const voorWie = isDoel ? (e.voorOns ? onsNaam : tegenNaam) : onsNaam;
+              const speler = isDoel
+                ? (e.voorOns ? (spelers.find(s => s.id === e.spelerId)?.naam || "?") : "—")
+                : (spelers.find(s => s.id === e.uitSpelerId)?.naam || "?");
+              const tegen = isDoel
+                ? (e.voorOns ? "—" : (spelers.find(s => s.id === e.tegenSpelerId)?.naam || "—"))
+                : (spelers.find(s => s.id === e.inSpelerId)?.naam || "?");
+              return <tr key={e.id}>
                 <td style={s.td}>{e.minuut}'</td>
                 <td style={s.td}>{e.helft}</td>
-                <td style={s.td}>{e.type === "doelpunt" ? "🥅" : "🔄"}</td>
+                <td style={s.td}>{isDoel ? "🥅" : "🔄"}</td>
                 <td style={s.td}>{e.doeltype || "—"}</td>
-                <td style={s.td}>{e.type === "doelpunt" ? (spelers.find(s => s.id === e.spelerId)?.naam || "?") : (spelers.find(s => s.id === e.uitSpelerId)?.naam || "?")}</td>
-                <td style={s.td}>{e.type === "doelpunt" ? (spelers.find(s => s.id === e.tegenSpelerId)?.naam || "—") : (spelers.find(s => s.id === e.inSpelerId)?.naam || "?")}</td>
-                <td style={s.td}>{teams.find(t => t.id === (e.scorendTeamId || e.teamId))?.naam || "—"}</td>
+                <td style={s.td}>{voorWie}</td>
+                <td style={s.td}>{speler}</td>
+                <td style={s.td}>{tegen}</td>
                 <td style={s.td}>{kanInvoeren && <button style={s.btn("danger")} onClick={() => verwijderEvent(e.id)}>🗑</button>}</td>
-              </tr>
-            ))}</tbody>
+              </tr>;
+            })}</tbody>
           </table>}
       </div>
 
@@ -633,17 +655,17 @@ function Statistieken({ wedstrijden, spelers, teams, huidigGebruiker, isManager 
   const relevanteTeams = isManager ? teams : teams.filter(t => t.id === mijnTeamId);
 
   function teamStats(teamId) {
-    const wedstrs = gespeeld.filter(w => w.thuisTeamId === teamId || w.uitTeamId === teamId);
+    const wedstrs = gespeeld.filter(w => w.teamId === teamId);
     let gescoord = 0, tegenscoord = 0, gewonnen = 0, verloren = 0, gelijk = 0;
     const doeltypeCount = {};
     wedstrs.forEach(w => {
-      const voor = (w.events || []).filter(e => e.type === "doelpunt" && e.scorendTeamId === teamId).length;
-      const tegen = (w.events || []).filter(e => e.type === "doelpunt" && e.scorendTeamId !== teamId).length;
+      const voor = (w.events || []).filter(e => e.type === "doelpunt" && e.voorOns).length;
+      const tegen = (w.events || []).filter(e => e.type === "doelpunt" && !e.voorOns).length;
       gescoord += voor; tegenscoord += tegen;
       if (voor > tegen) gewonnen++;
       else if (voor < tegen) verloren++;
       else gelijk++;
-      (w.events || []).filter(e => e.type === "doelpunt" && e.scorendTeamId === teamId).forEach(e => {
+      (w.events || []).filter(e => e.type === "doelpunt" && e.voorOns).forEach(e => {
         doeltypeCount[e.doeltype] = (doeltypeCount[e.doeltype] || 0) + 1;
       });
     });
@@ -652,12 +674,16 @@ function Statistieken({ wedstrijden, spelers, teams, huidigGebruiker, isManager 
 
   function spelersStats(spelerId) {
     let doelpunten = 0, doeltypen = {};
+    let tegenGescoord = 0;
     let wisselMinuten = [];
     gespeeld.forEach(w => {
       (w.events || []).forEach(e => {
-        if (e.type === "doelpunt" && e.spelerId === spelerId) {
+        if (e.type === "doelpunt" && e.voorOns && e.spelerId === spelerId) {
           doelpunten++;
           doeltypen[e.doeltype] = (doeltypen[e.doeltype] || 0) + 1;
+        }
+        if (e.type === "doelpunt" && !e.voorOns && e.tegenSpelerId === spelerId) {
+          tegenGescoord++;
         }
         if (e.type === "wissel") {
           if (e.inSpelerId === spelerId) wisselMinuten.push({ actie: "in", minuut: e.minuut, helft: e.helft });
@@ -665,7 +691,7 @@ function Statistieken({ wedstrijden, spelers, teams, huidigGebruiker, isManager 
         }
       });
     });
-    return { doelpunten, doeltypen, wisselMinuten };
+    return { doelpunten, doeltypen, tegenGescoord, wisselMinuten };
   }
 
   function exporteerSpelers() {
@@ -727,7 +753,7 @@ function Statistieken({ wedstrijden, spelers, teams, huidigGebruiker, isManager 
           <table style={s.table}>
             <thead>
               <tr>
-                {["Speler", "Team", "Doelpunten", ...DOELTYPEN, "Wissels"].map(h => <th key={h} style={s.th}>{h}</th>)}
+                {["Speler", "Team", "Doelpunten", ...DOELTYPEN, "Tegen gescoord", "Wissels"].map(h => <th key={h} style={s.th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -739,6 +765,7 @@ function Statistieken({ wedstrijden, spelers, teams, huidigGebruiker, isManager 
                     <td style={s.td}>{teams.find(t => t.id === sp.teamId)?.naam || "—"}</td>
                     <td style={{ ...s.td, fontWeight: 700, color: C.oranje }}>{st.doelpunten}</td>
                     {DOELTYPEN.map(d => <td key={d} style={s.td}>{st.doeltypen[d] || 0}</td>)}
+                    <td style={s.td}>{st.tegenGescoord}</td>
                     <td style={s.td}>{st.wisselMinuten.length}</td>
                   </tr>
                 );
