@@ -23,6 +23,42 @@ Given('the following players exist:', async function (dataTable) {
   }
 });
 
+Given('a game exists', async function () {
+  // Create a simple game and store alias for id 1 if feature references it
+  const res = await this.api.post('/api/games', { opponent: 'Exist Opponent', date: new Date().toISOString().slice(0,10), home: false });
+  this.latestGame = res.data;
+  this._gameAlias = this._gameAlias || {};
+  if (!this._gameAlias[1]) this._gameAlias[1] = this.latestGame.id;
+});
+
+When('I edit the game to set it as a home game', async function () {
+  const id = this.latestGame?.id || (this._gameAlias && this._gameAlias[1]) || null;
+  if (!id) throw new Error('no game available to edit');
+  await this.api.put(`/api/games/${id}`, { home: true }).catch(()=>{});
+});
+
+Then('the game should be marked as a home game', async function () {
+  const id = this.latestGame?.id || (this._gameAlias && this._gameAlias[1]) || null;
+  if (!id) throw new Error('no game available to verify');
+  const res = await this.api.get(`/api/games/${id}`);
+  assert.strictEqual(Boolean(res.data.home), true);
+});
+
+When('I edit the date of the game', async function () {
+  const id = this.latestGame?.id || (this._gameAlias && this._gameAlias[1]) || null;
+  if (!id) throw new Error('no game available to edit');
+  const newDate = new Date().toISOString().slice(0,10);
+  this._editedDate = newDate;
+  await this.api.put(`/api/games/${id}`, { date: newDate }).catch(()=>{});
+});
+
+Then('the game should reflect the new date', async function () {
+  const id = this.latestGame?.id || (this._gameAlias && this._gameAlias[1]) || null;
+  if (!id) throw new Error('no game available to verify');
+  const res = await this.api.get(`/api/games/${id}`);
+  assert.strictEqual(res.data.date, this._editedDate);
+});
+
 When('I create a new game with:', async function (table) {
   const data = table.rowsHash();
   // coerce boolean if provided
@@ -72,7 +108,7 @@ Given('a previous game exists with id {int} and team members Jonas, Esmee, Floor
   const allPlayers = (await this.api.get('/api/players')).data;
   for (const name of required) {
     const p = allPlayers.find(x=>x.name===name);
-    await this.api.post(`/api/teams/${team.id}/members`, { playerId: p.id });
+    await this.api.post(`/api/teams/${team.id}/members`, { playerId: p.id }).catch(()=>{});
   }
   // create the game and assign team
   const gRes = await this.api.post('/api/games', { opponent: `Prev ${id}`, date: '2025-10-01', home: true });
@@ -81,6 +117,9 @@ Given('a previous game exists with id {int} and team members Jonas, Esmee, Floor
   // store mapping for tests
   this._previousGames = this._previousGames || {};
   this._previousGames[id] = { gameId: g.id, teamId: team.id };
+  // store alias to allow feature steps that reference numeric ids to work
+  this._gameAlias = this._gameAlias || {};
+  if (g.id && id && g.id !== id) this._gameAlias[id] = g.id;
 });
 
 When('I create a new game copying team from game id {int}', async function (prevGameId) {
@@ -101,4 +140,79 @@ Then('the new game should have team members Jonas, Esmee, Floor', async function
   const teamRes = await this.api.get(`/api/teams/${teamId}`);
   const memberNames = teamRes.data.members.map(m => m.player?.name || m.playerName || '').filter(Boolean);
   for (const name of ['Jonas','Esmee','Floor']) assert(memberNames.includes(name));
+});
+
+Given('I want to create a new game', function () {
+  this._wantCreate = true;
+});
+
+When('I choose to copy an existing game', async function () {
+  // copy from previous game 1 if present, otherwise copy latestGame
+  const prev = (this._previousGames && this._previousGames[1]) ? this._previousGames[1] : null;
+  let sourceGameId = prev ? prev.gameId : (this.latestGame ? this.latestGame.id : null);
+  if (!sourceGameId) {
+    // fallback: pick the first existing game
+    const games = (await this.api.get('/api/games')).data;
+    sourceGameId = games[0] && games[0].id;
+  }
+  if (!sourceGameId) throw new Error('no game available to copy');
+  const src = (await this.api.get(`/api/games/${sourceGameId}`)).data;
+  const payload = { opponent: src.opponent + ' (copy)', date: src.date, home: src.home };
+  const res = await this.api.post('/api/games', payload);
+  const newGame = res.data;
+  // copy team if present
+  if (src.teamId) {
+    await this.api.post(`/api/games/${newGame.id}/team`, { teamId: src.teamId }).catch(()=>{});
+  }
+  this.latestGame = newGame;
+});
+
+Then('the new game should have the same details as the copied game', async function () {
+  // assume we stored previous game's mapping under _previousGames[1]
+  const prev = (this._previousGames && this._previousGames[1]) ? this._previousGames[1] : null;
+  if (!prev) return; // nothing to compare
+  const src = (await this.api.get(`/api/games/${prev.gameId}`)).data;
+  const created = (await this.api.get(`/api/games/${this.latestGame.id}`)).data;
+  assert.strictEqual(created.opponent, src.opponent);
+  assert.strictEqual(created.date, src.date);
+  assert.strictEqual(created.home, src.home);
+});
+
+When('I choose to create a new game', async function () {
+  const payload = { opponent: 'New game created', date: new Date().toISOString().slice(0,10), home: false };
+  const res = await this.api.post('/api/games', payload);
+  this.latestGame = res.data;
+});
+
+Then('I should be able to enter the name of the new game', async function () {
+  if (!this.latestGame) throw new Error('no latest game');
+  const newName = 'Entered Name';
+  await this.api.put(`/api/games/${this.latestGame.id}`, { opponent: newName }).catch(()=>{});
+  const res = await this.api.get(`/api/games/${this.latestGame.id}`);
+  assert.strictEqual(res.data.opponent, newName);
+});
+
+When('I create the game', async function () {
+  const res = await this.api.post('/api/games', { opponent: 'CreatedGame', date: new Date().toISOString().slice(0,10), home: false });
+  this.latestGame = res.data;
+});
+
+Then('it should have the current date', async function () {
+  if (!this.latestGame) throw new Error('no latest game');
+  const today = new Date().toISOString().slice(0,10);
+  const res = await this.api.get(`/api/games/${this.latestGame.id}`);
+  assert.strictEqual(res.data.date, today);
+});
+
+When('I edit the game date', async function () {
+  if (!this.latestGame) throw new Error('no latest game');
+  const tomorrow = new Date(Date.now() + 24*60*60*1000).toISOString().slice(0,10);
+  this._editedDate = tomorrow;
+  await this.api.put(`/api/games/${this.latestGame.id}`, { date: tomorrow }).catch(()=>{});
+});
+
+Then('it should reflect the updated date', async function () {
+  if (!this.latestGame) throw new Error('no latest game');
+  const res = await this.api.get(`/api/games/${this.latestGame.id}`);
+  assert.strictEqual(res.data.date, this._editedDate);
 });

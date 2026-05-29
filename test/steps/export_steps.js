@@ -52,6 +52,22 @@ When('I export all games to Excel', async function () {
   this.lastExportBuffer = Buffer.from(res.data);
 });
 
+When('I select the game and export it to Excel', async function () {
+  // use latestGame or alias 1
+  const gameId = this.latestGame?.id || (this._gameAlias && this._gameAlias[1]) || 1;
+  const res = await this.api.get(`/api/export/game/${gameId}`, { responseType: 'arraybuffer' });
+  this.lastExportBuffer = Buffer.from(res.data);
+});
+
+Then('the game data should be available in an Excel file', async function () {
+  assert(this.lastExportBuffer, 'No exported buffer available');
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(this.lastExportBuffer);
+  // expecting at least an events sheet and a metadata sheet for the selected game
+  assert(wb.getWorksheet('events'), 'events sheet missing from game export');
+  assert(wb.getWorksheet('metadata'), 'metadata sheet missing from game export');
+});
+
 Then('the exported file should contain:', async function (dataTable) {
   assert(this.lastExportBuffer, 'No exported buffer available');
   const wb = new ExcelJS.Workbook();
@@ -158,9 +174,15 @@ Then('I should see:', function (dataTable) {
   // compare expected metrics with lastStats (simple substring checks)
   for (const k of Object.keys(expected)) {
     const val = expected[k];
-    // metric names in feature are descriptive; map a few known ones
+    // Prefer direct lookup: overall-stats rows map metric name -> value
+    if (this.lastStats && Object.prototype.hasOwnProperty.call(this.lastStats, k)) {
+      assert.strictEqual(String(this.lastStats[k]), String(val));
+      continue;
+    }
+
+    // Backwards-compatible parsing for older numeric/json metric formats
     if (k.includes('type of goals scored the most')) {
-      const goalsByType = JSON.parse(this.lastStats.goalsByType || '{}');
+      const goalsByType = JSON.parse(this.lastStats?.goalsByType || '{}');
       // keys may be JSON strings containing {goalType: '...'}; normalize
       const normalized = {};
       for (const [k2, v2] of Object.entries(goalsByType)) {
@@ -174,7 +196,7 @@ Then('I should see:', function (dataTable) {
       const top = Object.entries(normalized).sort((a,b)=>b[1]-a[1])[0]?.[0] || '';
       assert.strictEqual(top, val);
     } else if (k.includes('type of goals scored against the most')) {
-      const against = JSON.parse(this.lastStats.goalsAgainstByType || '{}');
+      const against = JSON.parse(this.lastStats?.goalsAgainstByType || '{}');
       const normalized = {};
       for (const [k2, v2] of Object.entries(against)) {
         let key = k2;
@@ -187,7 +209,7 @@ Then('I should see:', function (dataTable) {
       const top = Object.entries(normalized).sort((a,b)=>b[1]-a[1])[0]?.[0] || '';
       assert.strictEqual(top, val);
     } else if (k.includes('most goals against males')) {
-      const byGender = JSON.parse(this.lastStats.goalsByGender || '{}');
+      const byGender = JSON.parse(this.lastStats?.goalsByGender || '{}');
       const top = Object.entries(byGender).sort((a,b)=>b[1]-a[1])[0]?.[0] || '';
       assert.strictEqual(top, val);
     }

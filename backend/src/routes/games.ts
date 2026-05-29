@@ -56,10 +56,8 @@ router.get('/:id', async (req, res) => {
 // DELETE /api/games -> delete all games and their events (test-only helper)
 router.delete('/', async (_req, res) => {
   try {
-    // cast to any to avoid type issues in test helper
-    const p: any = prisma;
-    await p.event.deleteMany({});
-    await p.game.deleteMany({});
+    await prisma.event.deleteMany({});
+    await prisma.game.deleteMany({});
     res.json({ ok: true });
   } catch (err) {
     console.error(err);

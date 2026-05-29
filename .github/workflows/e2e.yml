@@ -1,0 +1,75 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [ main, feat/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      CI: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install root dev dependencies
+        run: npm ci
+
+      - name: Install backend & frontend deps
+        run: |
+          npm --prefix backend ci
+          npm --prefix frontend ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build backend and frontend
+        run: |
+          npm --prefix backend run build
+          npm --prefix frontend run build
+
+      - name: Prepare temp SQLite DB and run migrations
+        working-directory: ./backend
+        run: |
+          TMP_DB="test-$(date +%s%N).db"
+          export DATABASE_URL="file:./$TMP_DB"
+          echo "Using temporary test DB: $TMP_DB"
+          npx prisma migrate deploy
+          echo "Migrations applied"
+          # keep TMP_DB path for later steps
+          echo "TMP_DB=$TMP_DB" >> $GITHUB_ENV
+
+      - name: Start backend server
+        working-directory: ./backend
+        run: |
+          export DATABASE_URL="file:./${TMP_DB}"
+          node dist/server.js &
+          BACKEND_PID=$!
+          echo "backend started (pid=$BACKEND_PID)"
+          # wait for server to become healthy
+          for i in {1..15}; do
+            if curl -sS http://localhost:4000/health > /dev/null; then
+              echo "backend healthy"; break
+            fi
+            sleep 1
+          done
+        env:
+          TMP_DB: ${{ env.TMP_DB }}
+
+      - name: Run E2E (Cucumber)
+        working-directory: .
+        run: |
+          export DATABASE_URL="file:./backend/${TMP_DB}"
+          npx cucumber-js --require test/support --require test/steps
+
+      - name: Cleanup temp DB
+        if: always()
+        run: rm -f backend/${TMP_DB}

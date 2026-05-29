@@ -11,13 +11,12 @@
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
     "e2e:install": "npm --prefix backend install && npm --prefix frontend install",
-    "e2e": "cucumber-js --require ./test/steps --require ./test/support --publish-quiet"
-  }
-  ,
+    "e2e": "cucumber-js"
+  },
   "devDependencies": {
-    "@cucumber/cucumber": "^9.0.0",
-    "playwright": "^1.37.0",
-    "axios": "^1.4.0",
-    "exceljs": "^4.4.0"
+    "@cucumber/cucumber": "^9.6.0",
+    "axios": "^1.13.1",
+    "exceljs": "^4.4.0",
+    "playwright": "^1.56.1"
   }
 }
