@@ -43,14 +43,14 @@ const DOELTYPEN = ["Strafworp", "Vrije worp", "Doorloopbal", "Korte kans", "Scho
 const HELFTEN = ["1e helft", "2e helft", "Verlenging"];
 const ROLLEN = ["Admin", "Teammanager", "Speler"];
 
-const DEFAULT_ADMIN = { id: "admin", naam: "Manager", rol: "Admin", teamId: null, wachtwoord: "admin", protected: true };
+export const DEFAULT_ADMIN = { id: "admin", naam: "Manager", rol: "Admin", teamId: null, wachtwoord: "admin", protected: true };
 
 // ── localStorage helpers ───────────────────────────────────────────
 const load = (k, def) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
 // Migration: ensure exactly one protected Admin user exists.
-function migrateGebruikers(list) {
+export function migrateGebruikers(list) {
   if (!Array.isArray(list) || list.length === 0) return [DEFAULT_ADMIN];
   let next = list.map(u => {
     if (u.naam === "Manager" && (u.rol === "Teammanager" || u.rol === "Admin")) {
