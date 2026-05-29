@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json",
   "start": "node dist/server.js",
   "migrate:ci": "DATABASE_URL=file:./test.db npx prisma migrate deploy",
+  "migrate:prod": "npx prisma migrate deploy",
   "test:ci": "./ci/run_tests.sh",
     "lint": "eslint . --ext .ts",
     "test": "vitest"

@@ -3,9 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  // allow overriding via DATABASE_URL for CI/tests
-  // NOTE: set DATABASE_URL env var in CI or test scripts
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
