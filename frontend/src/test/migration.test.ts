@@ -3,7 +3,7 @@ import { migrateGebruikers, DEFAULT_ADMIN } from '../App';
 
 describe('migrateGebruikers', () => {
   it('returns the default admin seed when the list is null', () => {
-    expect(migrateGebruikers(null as any)).toEqual([DEFAULT_ADMIN]);
+    expect(migrateGebruikers(null as unknown as never[])).toEqual([DEFAULT_ADMIN]);
   });
 
   it('returns the default admin seed when the list is empty', () => {

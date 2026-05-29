@@ -1,10 +1,18 @@
 // @ts-nocheck
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App, { DEFAULT_ADMIN } from '../App';
 
 const team = (id: string, naam: string) => ({ id, naam, manager: '' });
+
+interface SeedArgs {
+  user: unknown;
+  teams?: unknown[];
+  spelers?: unknown[];
+  wedstrijden?: unknown[];
+  gebruikers?: unknown[];
+}
 
 function seed({
   user,
@@ -12,7 +20,7 @@ function seed({
   spelers = [],
   wedstrijden = [],
   gebruikers = [DEFAULT_ADMIN],
-}: any) {
+}: SeedArgs) {
   localStorage.clear();
   localStorage.setItem('ow_teams', JSON.stringify(teams));
   localStorage.setItem('ow_spelers', JSON.stringify(spelers));
@@ -100,7 +108,7 @@ describe('Teammanager without team', () => {
     expect(screen.getByText(/mijn team/i)).toBeInTheDocument();
     // The user's teamId is now persisted
     const stored = JSON.parse(localStorage.getItem('ow_gebruikers') || '[]');
-    const me = stored.find((u: any) => u.id === 'u9');
+    const me = stored.find((u: { id: string; teamId?: string | null }) => u.id === 'u9');
     expect(me.teamId).toBeTruthy();
   });
 });

@@ -47,7 +47,7 @@ export const DEFAULT_ADMIN = { id: "admin", naam: "Manager", rol: "Admin", teamI
 
 // ── localStorage helpers ───────────────────────────────────────────
 const load = (k, def) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } };
-const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or unavailable — ignore */ } };
 
 // Migration: ensure exactly one protected Admin user exists.
 export function migrateGebruikers(list) {
@@ -154,7 +154,7 @@ export default function App() {
       <div style={s.page}>
         {tab === "dashboard" && <Dashboard wedstrijden={wedstrijden} spelers={spelers} teams={teams} isAdmin={isAdmin} mijnTeamId={mijnTeamId} />}
         {tab === "wedstrijden" && <Wedstrijden wedstrijden={wedstrijden} setWedstrijden={setWedstrijden} teams={teams} spelers={spelers} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} />}
-        {tab === "teams" && <Teams teams={teams} setTeams={setTeams} spelers={spelers} gebruikers={gebruikers} setGebruikers={setGebruikers} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} huidigGebruiker={huidigGebruiker} />}
+        {tab === "teams" && <Teams teams={teams} setTeams={setTeams} spelers={spelers} setGebruikers={setGebruikers} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} huidigGebruiker={huidigGebruiker} />}
         {tab === "spelers" && <Spelers spelers={spelers} setSpelers={setSpelers} teams={teams} wedstrijden={wedstrijden} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} />}
         {tab === "gebruikers" && isAdmin && <Gebruikers gebruikers={gebruikers} setGebruikers={setGebruikers} teams={teams} />}
         {tab === "statistieken" && <Statistieken wedstrijden={wedstrijden} spelers={spelers} teams={teams} isAdmin={isAdmin} mijnTeamId={mijnTeamId} />}
@@ -217,7 +217,7 @@ function Dashboard({ wedstrijden, spelers, teams, isAdmin, mijnTeamId }) {
 }
 
 // ── Teams ─────────────────────────────────────────────────────────
-function Teams({ teams, setTeams, spelers, gebruikers, setGebruikers, isAdmin, isTeammanager, mijnTeamId, huidigGebruiker }) {
+function Teams({ teams, setTeams, spelers, setGebruikers, isAdmin, isTeammanager, mijnTeamId, huidigGebruiker }) {
   const [nieuw, setNieuw] = useState({ naam: "", manager: "" });
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({ naam: "", manager: "" });
@@ -527,7 +527,7 @@ function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isAdmin, isT
   if (actieveWedstrijd) {
     const w = wedstrijden.find(x => x.id === actieveWedstrijd);
     if (!w) { setActieveWedstrijd(null); return null; }
-    return <WedstrijdDetail wedstrijd={w} wedstrijden={wedstrijden} setWedstrijden={setWedstrijden} teams={teams} spelers={spelers} onTerug={() => setActieveWedstrijd(null)} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} />;
+    return <WedstrijdDetail wedstrijd={w} setWedstrijden={setWedstrijden} teams={teams} spelers={spelers} onTerug={() => setActieveWedstrijd(null)} isAdmin={isAdmin} isTeammanager={isTeammanager} mijnTeamId={mijnTeamId} />;
   }
 
   return (
@@ -589,7 +589,7 @@ function Wedstrijden({ wedstrijden, setWedstrijden, teams, spelers, isAdmin, isT
 }
 
 // ── WedstrijdDetail ───────────────────────────────────────────────
-function WedstrijdDetail({ wedstrijd: w, wedstrijden, setWedstrijden, teams, spelers, onTerug, isAdmin, isTeammanager, mijnTeamId }) {
+function WedstrijdDetail({ wedstrijd: w, setWedstrijden, teams, spelers, onTerug, isAdmin, isTeammanager, mijnTeamId }) {
   const onsTeam = teams.find(t => t.id === w.teamId);
   const onsSpelers = spelers.filter(s => s.teamId === w.teamId);
 
@@ -821,9 +821,10 @@ function Statistieken({ wedstrijden, spelers, teams, isAdmin, mijnTeamId }) {
   }
 
   function spelersStats(spelerId) {
-    let doelpunten = 0, doeltypen = {};
+    let doelpunten = 0;
+    const doeltypen = {};
     let tegenGescoord = 0;
-    let wisselMinuten = [];
+    const wisselMinuten = [];
     gespeeld.forEach(w => {
       (w.events || []).forEach(e => {
         if (e.type === "doelpunt" && e.voorOns && e.spelerId === spelerId) {

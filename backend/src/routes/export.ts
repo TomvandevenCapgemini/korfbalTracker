@@ -25,7 +25,8 @@ router.get('/export/game/:id', async (req, res) => {
 
   const buffer = await wb.xlsx.writeBuffer();
   // ensure we send a Node Buffer and a Content-Length to avoid transport/truncation issues
-  const nodeBuffer = Buffer.from(buffer as any);
+  // ExcelJS#writeBuffer's return type is its own Buffer alias; coerce via Uint8Array.
+  const nodeBuffer = Buffer.from(buffer as unknown as ArrayBuffer);
   res.writeHead(200, {
     'Content-Disposition': `attachment; filename=game-${id}.xlsx`,
     'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -122,7 +123,8 @@ router.get('/export/all', async (_req, res) => {
   wsStats.addRow(['home/away advantage per team', JSON.stringify(stats.homeAdvantage)]);
 
   const buffer = await wb.xlsx.writeBuffer();
-  const nodeBuffer = Buffer.from(buffer as any);
+  // ExcelJS#writeBuffer's return type is its own Buffer alias; coerce via Uint8Array.
+  const nodeBuffer = Buffer.from(buffer as unknown as ArrayBuffer);
   res.writeHead(200, {
     'Content-Disposition': `attachment; filename=all-games.xlsx`,
     'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

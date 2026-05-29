@@ -2,17 +2,17 @@ import axios from 'axios';
 
 const api = axios.create({ baseURL: '/api' });
 
-export async function fetchGames(): Promise<any[]> {
+export async function fetchGames(): Promise<unknown[]> {
   const r = await api.get('/games');
   return r.data;
 }
 
-export async function fetchGame(id: number): Promise<any> {
+export async function fetchGame(id: number): Promise<unknown> {
   const r = await api.get(`/games/${id}`);
   return r.data;
 }
 
-export async function createGame(payload: any): Promise<any> {
+export async function createGame(payload: unknown): Promise<unknown> {
   const r = await api.post('/games', payload);
   return r.data;
 }
@@ -22,12 +22,12 @@ export async function fetchPlayers() {
   return r.data;
 }
 
-export async function createPlayer(payload: any): Promise<any> {
+export async function createPlayer(payload: unknown): Promise<unknown> {
   const r = await api.post('/players', payload);
   return r.data;
 }
 
-export async function createEvent(gameId: number, payload: any): Promise<any> {
+export async function createEvent(gameId: number, payload: unknown): Promise<unknown> {
   const r = await api.post(`/games/${gameId}/events`, payload);
   return r.data;
 }
@@ -47,12 +47,12 @@ export async function fetchTeams() {
   return r.data;
 }
 
-export async function createTeam(payload: any) {
+export async function createTeam(payload: unknown) {
   const r = await api.post('/teams', payload);
   return r.data;
 }
 
-export async function addTeamMember(teamId: number, payload: any) {
+export async function addTeamMember(teamId: number, payload: unknown) {
   const r = await api.post(`/teams/${teamId}/members`, payload);
   return r.data;
 }

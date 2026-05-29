@@ -4,7 +4,15 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App, { DEFAULT_ADMIN } from '../App';
 
-function seed({ user, teams = [], spelers = [], wedstrijden = [], gebruikers = [DEFAULT_ADMIN] }: any) {
+interface SeedArgs {
+  user: unknown;
+  teams?: unknown[];
+  spelers?: unknown[];
+  wedstrijden?: unknown[];
+  gebruikers?: unknown[];
+}
+
+function seed({ user, teams = [], spelers = [], wedstrijden = [], gebruikers = [DEFAULT_ADMIN] }: SeedArgs) {
   localStorage.clear();
   localStorage.setItem('ow_teams', JSON.stringify(teams));
   localStorage.setItem('ow_spelers', JSON.stringify(spelers));

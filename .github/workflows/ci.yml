@@ -13,11 +13,11 @@ jobs:
       matrix:
         package: [backend, frontend]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # NOTE: Authentication docs are maintained in docs/authentication.md and CONTRIBUTING.md
       # Contributors: see those files for HTTPS/PAT and SSH instructions when configuring your local repo.
       - name: Use Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
       - name: Install dependencies (root)
@@ -31,7 +31,9 @@ jobs:
       - name: Run tests / build
         run: |
           if [ "${{ matrix.package }}" = "backend" ]; then
-            npm --prefix backend run test --if-present || exit 1
+            # test:ci provisions a temp sqlite DB, runs migrations, then vitest.
+            npm --prefix backend run test:ci || exit 1
           else
             npm --prefix frontend run build --if-present || exit 1
+            npm --prefix frontend test -- --run || exit 1
           fi
